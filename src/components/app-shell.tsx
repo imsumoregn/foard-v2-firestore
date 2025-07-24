@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useSidebar } from '@/components/ui/sidebar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -33,13 +34,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full bg-primary/20 text-primary">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M4 4h16v16H4z"></path><path d="M9 4v16"></path><path d="M14 4v16"></path></svg>
-            </Button>
+          <div className="flex items-center gap-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src="https://placehold.co/100x100.png" alt="@Ry" data-ai-hint="avatar" />
+              <AvatarFallback>RY</AvatarFallback>
+            </Avatar>
             <div className="flex flex-col">
-              <h2 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Foard</h2>
-              <p className="text-xs text-muted-foreground">Functional Dashboard</p>
+              <h2 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Ry</h2>
+              <p className="text-xs text-muted-foreground">SphynxFT</p>
             </div>
           </div>
         </SidebarHeader>
