@@ -14,6 +14,7 @@ import { PlusCircle, Target } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useIsClient } from '@/hooks/use-is-client';
 
 const goalSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -28,6 +29,7 @@ export default function GoalsPage() {
   const [goals, setGoals] = useLocalStorage<Goal[]>('goals', mockGoals);
   const [isAddDialogOpen, setAddDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const isClient = useIsClient();
 
   const addForm = useForm<z.infer<typeof goalSchema>>({
     resolver: zodResolver(goalSchema),
@@ -59,6 +61,10 @@ export default function GoalsPage() {
     updateForm.reset();
     setEditingGoal(null);
   };
+  
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

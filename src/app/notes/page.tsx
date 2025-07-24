@@ -15,6 +15,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
+import { useIsClient } from '@/hooks/use-is-client';
 
 const noteSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -24,6 +25,7 @@ const noteSchema = z.object({
 export default function NotesPage() {
   const [notes, setNotes] = useLocalStorage<Note[]>('notes', mockNotes);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const isClient = useIsClient();
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<z.infer<typeof noteSchema>>({
     resolver: zodResolver(noteSchema),
@@ -45,6 +47,10 @@ export default function NotesPage() {
   const handleDeleteNote = (id: string) => {
     setNotes(notes.filter((note) => note.id !== id));
   };
+  
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

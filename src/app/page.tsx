@@ -29,6 +29,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useState } from 'react';
+import { useIsClient } from '@/hooks/use-is-client';
 
 const taskSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -40,6 +41,7 @@ const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
 export default function DashboardPage() {
   const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', mockTasks);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const isClient = useIsClient();
 
   const { control, handleSubmit, register, reset, watch } = useForm({
     resolver: zodResolver(taskSchema),
@@ -71,6 +73,10 @@ export default function DashboardPage() {
     },
     {} as Record<TaskCategory, Task[]>
   );
+
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="flex h-full flex-col gap-6">

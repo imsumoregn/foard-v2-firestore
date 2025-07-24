@@ -15,6 +15,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Badge } from '@/components/ui/badge';
+import { useIsClient } from '@/hooks/use-is-client';
 
 const readingItemSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -26,6 +27,7 @@ const statuses: ReadingStatus[] = ['To Read', 'Reading', 'Completed'];
 export default function ReadingListPage() {
   const [readingList, setReadingList] = useLocalStorage<ReadingListItem[]>('readingList', mockReadingList);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const isClient = useIsClient();
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<z.infer<typeof readingItemSchema>>({
     resolver: zodResolver(readingItemSchema),
@@ -60,6 +62,10 @@ export default function ReadingListPage() {
       default: return 'outline';
     }
   };
+  
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
