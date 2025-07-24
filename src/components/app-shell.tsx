@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="group-data-[collapsible=icon]:justify-center">
+        <SidebarHeader>
           <UserProfile />
         </SidebarHeader>
         <SidebarContent>

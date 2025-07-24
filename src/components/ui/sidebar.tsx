@@ -371,6 +371,7 @@ const SidebarHeader = React.forwardRef<
       className={cn(
         "flex flex-col gap-2 p-2 group-data-[collapsible=icon]:p-1.5",
          "group-data-[collapsible=icon]:items-center",
+         "group-data-[collapsible=icon]:justify-center",
          className
       )}
       {...props}
@@ -537,7 +538,7 @@ const sidebarMenuButtonVariants = cva(
       size: {
         default: "h-8 text-sm",
         sm: "h-7 text-xs",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0",
+        lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:h-12",
       },
     },
     defaultVariants: {
