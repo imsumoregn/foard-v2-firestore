@@ -168,15 +168,21 @@ const Sidebar = React.forwardRef<
     {
       side = "left",
       variant = "sidebar",
-      collapsible = "offcanvas",
+      collapsible = "icon",
       className,
       children,
       ...props
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const { isMobile, state, openMobile, setOpenMobile, toggleSidebar } = useSidebar()
 
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+      if ((e.target as HTMLElement).getAttribute('data-sidebar') === 'sidebar') {
+        toggleSidebar();
+      }
+    };
+    
     if (collapsible === "none") {
       return (
         <div
@@ -251,7 +257,8 @@ const Sidebar = React.forwardRef<
         >
           <div
             data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+            onClick={handleBackdropClick}
+            className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow cursor-pointer"
           >
             {children}
           </div>
@@ -552,6 +559,8 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
+      children,
+      onClick,
       ...props
     },
     ref
@@ -565,9 +574,15 @@ const SidebarMenuButton = React.forwardRef<
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
+        onClick={(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+            e.stopPropagation();
+            onClick?.(e);
+        }}
         className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
         {...props}
-      />
+      >
+        {children}
+      </Comp>
     )
 
     if (!tooltip) {

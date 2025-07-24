@@ -13,7 +13,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarFooter,
-  SidebarTrigger,
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="icon">
+      <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full bg-primary/20 text-primary">
@@ -70,7 +69,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-4 border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
-           <SidebarTrigger />
           {/* Header actions can go here */}
         </header>
         <main className="flex-1 p-4 sm:p-6">{children}</main>
