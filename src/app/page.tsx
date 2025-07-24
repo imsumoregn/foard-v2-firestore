@@ -33,7 +33,6 @@ import { useState } from 'react';
 const taskSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   category: z.enum(['Now', 'Day', 'Week', 'Month']),
-  tag: z.string().min(1, 'Tag is required'),
 });
 
 const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
@@ -42,21 +41,23 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', mockTasks);
   const [isDialogOpen, setDialogOpen] = useState(false);
 
-  const { control, handleSubmit, register, reset } = useForm({
+  const { control, handleSubmit, register, reset, watch } = useForm({
     resolver: zodResolver(taskSchema),
     defaultValues: {
       title: '',
       category: 'Now' as TaskCategory,
-      tag: '',
     },
   });
 
   const onSubmit = (data: z.infer<typeof taskSchema>) => {
+    const categorizedTasks = tasks.filter(task => task.category === data.category);
+    const newTag = `${data.category.charAt(0)}${categorizedTasks.length + 1}`;
+    
     const newTask: Task = {
       id: new Date().toISOString(),
       title: data.title,
       category: data.category as TaskCategory,
-      tag: data.tag,
+      tag: newTag,
     };
     setTasks([...tasks, newTask]);
     reset();
@@ -112,10 +113,6 @@ export default function DashboardPage() {
                   )}
                 />
               </div>
-              <div>
-                <Label htmlFor="tag">Tag (e.g., N1, D2)</Label>
-                <Input id="tag" {...register('tag')} />
-              </div>
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="ghost">Cancel</Button>
@@ -127,17 +124,13 @@ export default function DashboardPage() {
         </Dialog>
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-5">
-        <div className="xl:col-span-4">
-          <div className="grid h-full grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {categories.map((category) => (
-              <TaskColumn key={category} category={category} tasks={categorizedTasks[category]} />
-            ))}
-          </div>
-        </div>
-        <div className="xl:col-span-1">
-          <InspirationCard />
-        </div>
+      <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {categories.map((category) => (
+          <TaskColumn key={category} category={category} tasks={categorizedTasks[category]} />
+        ))}
+      </div>
+      <div className="mt-6">
+        <InspirationCard />
       </div>
     </div>
   );
