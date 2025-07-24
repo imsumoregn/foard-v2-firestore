@@ -28,8 +28,7 @@ export function DraggableTaskCard({ task }: DraggableTaskCardProps) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Card className="bg-muted/50 cursor-grab">
+      <Card ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-muted/50 cursor-grab">
         <CardContent className="p-4">
           <div className="flex items-start justify-between">
             <p className="font-medium">{task.title}</p>
@@ -37,6 +36,5 @@ export function DraggableTaskCard({ task }: DraggableTaskCardProps) {
           </div>
         </CardContent>
       </Card>
-    </div>
   );
 }
