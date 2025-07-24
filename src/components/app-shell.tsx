@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader>
+        <SidebarHeader className="group-data-[collapsible=icon]:justify-center">
           <UserProfile />
         </SidebarHeader>
         <SidebarContent>
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <Link href={item.href}>
                     <item.icon />
-                    <span>{item.label}</span>
+                    <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
