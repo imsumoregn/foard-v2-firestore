@@ -16,8 +16,8 @@ import {
   DialogFooter,
   DialogClose
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -36,7 +36,7 @@ import { DraggableTaskCard } from '@/components/dashboard/draggable-task-card';
 
 
 const taskSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
+  titles: z.string().min(1, 'At least one title is required'),
   category: z.enum(['Now', 'Day', 'Week', 'Month']),
 });
 
@@ -50,22 +50,27 @@ export default function DashboardPage() {
   const { control, handleSubmit, register, reset, watch } = useForm({
     resolver: zodResolver(taskSchema),
     defaultValues: {
-      title: '',
+      titles: '',
       category: 'Now' as TaskCategory,
     },
   });
 
   const onSubmit = (data: z.infer<typeof taskSchema>) => {
-    const categorizedTasks = tasks.filter(task => task.category === data.category);
-    const newTag = `${data.category.charAt(0)}${categorizedTasks.length + 1}`;
-    
-    const newTask: Task = {
-      id: new Date().toISOString(),
-      title: data.title,
-      category: data.category as TaskCategory,
-      tag: newTag,
-    };
-    setTasks([...tasks, newTask]);
+    const titles = data.titles.split('\n').filter(title => title.trim() !== '');
+    if (titles.length === 0) return;
+
+    const newTasks: Task[] = titles.map((title, index) => {
+        const categorizedTasks = tasks.filter(task => task.category === data.category);
+        const newTag = `${data.category.charAt(0)}${categorizedTasks.length + index + 1}`;
+        return {
+            id: new Date().toISOString() + index,
+            title: title.trim(),
+            category: data.category as TaskCategory,
+            tag: newTag,
+        };
+    });
+
+    setTasks([...tasks, ...newTasks]);
     reset();
     setDialogOpen(false);
   };
@@ -163,8 +168,8 @@ export default function DashboardPage() {
                 </DialogHeader>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div>
-                    <Label htmlFor="title">Title</Label>
-                    <Input id="title" {...register('title')} />
+                    <Label htmlFor="titles">Titles (one per line)</Label>
+                    <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
                 </div>
                 <div>
                     <Label htmlFor="category">Category</Label>
@@ -191,7 +196,7 @@ export default function DashboardPage() {
                     <DialogClose asChild>
                     <Button type="button" variant="ghost">Cancel</Button>
                     </DialogClose>
-                    <Button type="submit">Add Task</Button>
+                    <Button type="submit">Add Tasks</Button>
                 </DialogFooter>
                 </form>
             </DialogContent>
