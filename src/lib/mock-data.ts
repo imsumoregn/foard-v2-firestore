@@ -25,9 +25,9 @@ export const mockNotes: Note[] = [
 ];
 
 export const mockReadingList: ReadingListItem[] = [
-  { id: '1', title: 'The Pragmatic Programmer', author: 'David Thomas, Andrew Hunt', status: 'Reading' },
-  { id: '2', title: 'Atomic Habits', author: 'James Clear', status: 'To Read' },
-  { id: '3', title: 'Designing Data-Intensive Applications', author: 'Martin Kleppmann', status: 'Completed' },
+  { id: '1', title: 'The Pragmatic Programmer', author: 'David Thomas, Andrew Hunt', status: 'Reading', summary: 'A classic guide to software development best practices, emphasizing a pragmatic approach to writing flexible, adaptable, and maintainable code.' },
+  { id: '2', title: 'Atomic Habits', author: 'James Clear', status: 'To Read', summary: 'An easy and proven way to build good habits and break bad ones by focusing on small, incremental changes that compound over time.' },
+  { id: '3', title: 'Designing Data-Intensive Applications', author: 'Martin Kleppmann', status: 'Completed', summary: 'A comprehensive guide to the principles and practicalities of building scalable and reliable data systems in the modern era.' },
 ];
 
 export const mockGoals: Goal[] = [

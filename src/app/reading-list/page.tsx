@@ -10,12 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2, BookOpen } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { useIsClient } from '@/hooks/use-is-client';
+import { summarizeBook } from '@/ai/flows/summarize-book-flow';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
 
 const readingItemSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -27,6 +30,7 @@ const statuses: ReadingStatus[] = ['To Read', 'Reading', 'Completed'];
 export default function ReadingListPage() {
   const [readingList, setReadingList] = useLocalStorage<ReadingListItem[]>('readingList', mockReadingList);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const [isSummarizing, setSummarizing] = useState(false);
   const isClient = useIsClient();
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<z.infer<typeof readingItemSchema>>({
@@ -34,16 +38,26 @@ export default function ReadingListPage() {
     defaultValues: { title: '', author: '' },
   });
 
-  const handleAddItem = (data: z.infer<typeof readingItemSchema>) => {
-    const newItem: ReadingListItem = {
-      id: new Date().toISOString(),
-      title: data.title,
-      author: data.author,
-      status: 'To Read',
-    };
-    setReadingList([newItem, ...readingList]);
-    reset();
-    setDialogOpen(false);
+  const handleAddItem = async (data: z.infer<typeof readingItemSchema>) => {
+    setSummarizing(true);
+    try {
+      const { summary } = await summarizeBook(data);
+      const newItem: ReadingListItem = {
+        id: new Date().toISOString(),
+        title: data.title,
+        author: data.author,
+        status: 'To Read',
+        summary: summary,
+      };
+      setReadingList([newItem, ...readingList]);
+      reset();
+      setDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to summarize book:", error);
+      // Handle error, maybe show a toast message
+    } finally {
+      setSummarizing(false);
+    }
   };
 
   const handleDeleteItem = (id: string) => {
@@ -89,8 +103,11 @@ export default function ReadingListPage() {
                 {errors.author && <p className="text-sm text-destructive">{errors.author.message}</p>}
               </div>
               <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                <Button type="submit">Add Item</Button>
+                <DialogClose asChild><Button type="button" variant="ghost" disabled={isSummarizing}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSummarizing}>
+                  {isSummarizing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Add Item
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -106,6 +123,21 @@ export default function ReadingListPage() {
             </CardHeader>
             <CardContent className="flex-1">
                <Badge variant={getStatusBadgeVariant(item.status)}>{item.status}</Badge>
+                {item.summary && (
+                  <Accordion type="single" collapsible className="w-full mt-4">
+                    <AccordionItem value="item-1">
+                      <AccordionTrigger>
+                        <div className="flex items-center gap-2 text-sm">
+                          <BookOpen className="h-4 w-4" />
+                          Show Summary
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <p className="text-sm text-muted-foreground">{item.summary}</p>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                )}
             </CardContent>
             <CardFooter className="flex justify-between">
                <Select value={item.status} onValueChange={(value) => handleStatusChange(item.id, value as ReadingStatus)}>

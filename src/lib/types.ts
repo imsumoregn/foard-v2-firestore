@@ -21,6 +21,7 @@ export type ReadingListItem = {
   title:string;
   author: string;
   status: ReadingStatus;
+  summary?: string;
 };
 
 export type Goal = {
