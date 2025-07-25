@@ -30,7 +30,7 @@ function UserProfile() {
             <AvatarFallback>RY</AvatarFallback>
         </Avatar>
         <div className={`flex flex-col overflow-hidden transition-all duration-200 ${state === 'collapsed' ? 'w-0' : 'w-auto'}`}>
-            <h2 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Ry</h2>
+            <h2 className="font-semibold tracking-tight text-sidebar-foreground">Ry</h2>
             <p className="text-xs text-muted-foreground">SphynxFT</p>
         </div>
     </div>
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <Link href={item.href}>
                     <item.icon />
-                    <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
+                    <span>{item.label}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
