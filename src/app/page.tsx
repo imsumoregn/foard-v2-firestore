@@ -1,3 +1,4 @@
+
 'use client';
 
 import { TaskColumn } from '@/components/dashboard/task-column';
@@ -32,7 +33,6 @@ import { useState, useMemo } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
 import { DndContext, DragEndEvent, useDroppable, useDraggable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { DraggableTaskCard } from '@/components/dashboard/draggable-task-card';
 
 
 const taskSchema = z.object({
@@ -67,12 +67,17 @@ export default function DashboardPage() {
             title: title.trim(),
             category: data.category as TaskCategory,
             tag: newTag,
+            order: 0 // order is not used in local dashboard
         };
     });
 
     setTasks([...tasks, ...newTasks]);
     reset();
     setDialogOpen(false);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    setTasks(currentTasks => currentTasks.filter(task => task.id !== taskId));
   };
 
   const categorizedTasks = useMemo(() => {
@@ -208,7 +213,9 @@ export default function DashboardPage() {
                 <TaskColumn 
                     key={category} 
                     category={category} 
-                    tasks={categorizedTasks[category]} />
+                    tasks={categorizedTasks[category]}
+                    onDeleteTask={handleDeleteTask}
+                    />
             ))}
         </div>
         <div className="xl:col-span-4">

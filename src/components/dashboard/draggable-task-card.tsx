@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSortable } from '@dnd-kit/sortable';
@@ -5,12 +6,14 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Task } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { TaskContextMenu } from './task-context-menu';
 
 interface DraggableTaskCardProps {
   task: Task;
+  onDelete: (id: string) => void;
 }
 
-export function DraggableTaskCard({ task }: DraggableTaskCardProps) {
+export function DraggableTaskCard({ task, onDelete }: DraggableTaskCardProps) {
   const {
     attributes,
     listeners,
@@ -28,6 +31,7 @@ export function DraggableTaskCard({ task }: DraggableTaskCardProps) {
   };
 
   return (
+    <TaskContextMenu task={task} onDelete={onDelete}>
       <Card ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-muted/50 cursor-grab touch-none">
         <CardContent className="p-4">
           <div className="flex items-start justify-between">
@@ -36,5 +40,6 @@ export function DraggableTaskCard({ task }: DraggableTaskCardProps) {
           </div>
         </CardContent>
       </Card>
+    </TaskContextMenu>
   );
 }

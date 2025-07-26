@@ -32,7 +32,7 @@ import { useIsClient } from '@/hooks/use-is-client';
 import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction } from 'firebase/firestore';
+import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction, deleteDoc } from 'firebase/firestore';
 
 
 const taskSchema = z.object({
@@ -102,6 +102,10 @@ export default function CollabPage() {
 
     reset();
     setDialogOpen(false);
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    await deleteDoc(doc(db, 'collab-tasks', taskId));
   };
   
   const categorizedTasks = useMemo(() => {
@@ -240,7 +244,9 @@ export default function CollabPage() {
                 <TaskColumn 
                     key={category} 
                     category={category} 
-                    tasks={categorizedTasks[category] ?? []} />
+                    tasks={categorizedTasks[category] ?? []}
+                    onDeleteTask={handleDeleteTask}
+                    />
             ))}
         </div>
         <div className="xl:col-span-4">
