@@ -21,13 +21,13 @@ export function TaskColumn({ category, tasks, onDeleteTask }: TaskColumnProps) {
     
   return (
     <SortableContext id={category} items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <Card ref={setNodeRef} className="flex h-full flex-col overflow-hidden">
+        <Card ref={setNodeRef} className="flex h-full flex-col">
         <CardHeader>
             <CardTitle className="text-lg">{category}</CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 overflow-auto">
-            <ScrollArea className="h-full pr-4">
-            <div className="flex flex-col gap-4">
+        <CardContent className="flex-1 p-0">
+            <ScrollArea className="h-full">
+            <div className="flex flex-col gap-4 p-6 pt-0">
                 {tasks.map((task) => (
                     <DraggableTaskCard 
                       key={task.id} 

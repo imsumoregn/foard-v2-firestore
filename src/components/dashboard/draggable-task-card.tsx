@@ -35,7 +35,7 @@ export function DraggableTaskCard({ task, onDelete }: DraggableTaskCardProps) {
       <Card ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-muted/50 cursor-grab touch-none">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-4">
-            <p className="font-medium break-words">{task.title}</p>
+            <p className="font-medium break-all">{task.title}</p>
             <Badge variant="secondary" className="flex-shrink-0">{task.tag}</Badge>
           </div>
         </CardContent>
