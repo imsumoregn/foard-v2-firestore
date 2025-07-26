@@ -34,9 +34,9 @@ export function DraggableTaskCard({ task, onDelete }: DraggableTaskCardProps) {
     <TaskContextMenu task={task} onDelete={onDelete}>
       <Card ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-muted/50 cursor-grab touch-none">
         <CardContent className="p-4">
-          <div className="flex items-start justify-between">
-            <p className="font-medium">{task.title}</p>
-            <Badge variant="secondary">{task.tag}</Badge>
+          <div className="flex items-start justify-between gap-4">
+            <p className="font-medium break-words">{task.title}</p>
+            <Badge variant="secondary" className="flex-shrink-0">{task.tag}</Badge>
           </div>
         </CardContent>
       </Card>
