@@ -1,3 +1,4 @@
+
 export type TaskCategory = 'Now' | 'Day' | 'Week' | 'Month';
 
 export type Task = {
@@ -5,6 +6,7 @@ export type Task = {
   title: string;
   category: TaskCategory;
   tag: string;
+  order: number;
 };
 
 export type Note = {

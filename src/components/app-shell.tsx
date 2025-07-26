@@ -1,9 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Book, LayoutDashboard, Lightbulb, PenSquare, Target } from 'lucide-react';
+import { Book, LayoutDashboard, Lightbulb, PenSquare, Target, Users } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -42,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const menuItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/collab', label: 'Collab', icon: Users },
     { href: '/notes', label: 'Notes', icon: PenSquare },
     { href: '/reading-list', label: 'Reading List', icon: Book },
     { href: '/goals', label: 'Goals', icon: Target },
