@@ -2,7 +2,6 @@
 'use client';
 
 import { TaskColumn } from '@/components/dashboard/task-column';
-import { InspirationCard } from '@/components/dashboard/inspiration-card';
 import type { Task, TaskCategory } from '@/lib/types';
 import { mockTasks } from '@/lib/mock-data';
 import useLocalStorage from '@/hooks/use-local-storage';
@@ -217,9 +216,6 @@ export default function DashboardPage() {
                     onDeleteTask={handleDeleteTask}
                     />
             ))}
-        </div>
-        <div className="xl:col-span-4">
-            <InspirationCard />
         </div>
         </div>
     </DndContext>

@@ -2,7 +2,7 @@
 'use client';
 
 import { TaskColumn } from '@/components/dashboard/task-column';
-import { InspirationCard } from '@/components/dashboard/inspiration-card';
+import { TaskColumnSkeleton } from '@/components/dashboard/task-column-skeleton';
 import type { Task, TaskCategory } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
@@ -45,6 +45,7 @@ const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
 export default function CollabPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const [isLoading, setLoading] = useState(true);
   const isClient = useIsClient();
 
   const { control, handleSubmit, register, reset } = useForm({
@@ -65,6 +66,7 @@ export default function CollabPage() {
         tasksData.push({ id: doc.id, ...doc.data() } as Task);
       });
       setTasks(tasksData);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -183,7 +185,19 @@ export default function CollabPage() {
 
 
   if (!isClient) {
-    return null;
+    return (
+        <div className="flex h-full flex-col gap-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold">Collab</h1>
+                <Button disabled><PlusCircle className="mr-2 h-4 w-4" /> Add Task</Button>
+            </div>
+            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {categories.map((category) => (
+                    <TaskColumnSkeleton key={category} category={category} />
+                ))}
+            </div>
+        </div>
+    );
   }
 
   return (
@@ -239,19 +253,24 @@ export default function CollabPage() {
             </Dialog>
         </div>
 
-        <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {categories.map((category) => (
-                <TaskColumn 
-                    key={category} 
-                    category={category} 
-                    tasks={categorizedTasks[category] ?? []}
-                    onDeleteTask={handleDeleteTask}
-                    />
-            ))}
-        </div>
-        <div className="xl:col-span-4">
-            <InspirationCard />
-        </div>
+        {isLoading ? (
+            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {categories.map((category) => (
+                    <TaskColumnSkeleton key={category} category={category} />
+                ))}
+            </div>
+        ) : (
+            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {categories.map((category) => (
+                    <TaskColumn 
+                        key={category} 
+                        category={category} 
+                        tasks={categorizedTasks[category] ?? []}
+                        onDeleteTask={handleDeleteTask}
+                        />
+                ))}
+            </div>
+        )}
         </div>
     </DndContext>
   );
