@@ -7,6 +7,8 @@ export type Task = {
   category: TaskCategory;
   tag: string;
   order: number;
+  status?: 'active' | 'done';
+  completedAt?: string;
 };
 
 export type Note = {

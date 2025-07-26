@@ -6,7 +6,7 @@ import type { Task, TaskCategory } from '@/lib/types';
 import { mockTasks } from '@/lib/mock-data';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Archive } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -30,8 +30,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useState, useMemo } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
-import { DndContext, DragEndEvent, useDroppable, useDraggable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { DndContext, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { format } from 'date-fns';
 
 
 const taskSchema = z.object({
@@ -42,11 +44,12 @@ const taskSchema = z.object({
 const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
 
 export default function DashboardPage() {
-  const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', mockTasks);
+  const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', mockTasks.filter(t => t.status !== 'done'));
+  const [archivedTasks, setArchivedTasks] = useLocalStorage<Task[]>('archived-tasks', mockTasks.filter(t => t.status === 'done'));
   const [isDialogOpen, setDialogOpen] = useState(false);
   const isClient = useIsClient();
 
-  const { control, handleSubmit, register, reset, watch } = useForm({
+  const { control, handleSubmit, register, reset } = useForm({
     resolver: zodResolver(taskSchema),
     defaultValues: {
       titles: '',
@@ -66,7 +69,8 @@ export default function DashboardPage() {
             title: title.trim(),
             category: data.category as TaskCategory,
             tag: newTag,
-            order: 0 // order is not used in local dashboard
+            order: 0, 
+            status: 'active'
         };
     });
 
@@ -77,17 +81,38 @@ export default function DashboardPage() {
 
   const handleDeleteTask = (taskId: string) => {
     setTasks(currentTasks => currentTasks.filter(task => task.id !== taskId));
+    setArchivedTasks(currentTasks => currentTasks.filter(task => task.id !== taskId));
+  };
+  
+  const handleMarkAsDone = (taskId: string) => {
+    const taskToArchive = tasks.find(task => task.id === taskId);
+    if (taskToArchive) {
+        const remainingTasks = tasks.filter(task => task.id !== taskId);
+        setTasks(remainingTasks);
+        setArchivedTasks([{ ...taskToArchive, status: 'done', completedAt: new Date().toISOString() }, ...archivedTasks]);
+    }
   };
 
   const categorizedTasks = useMemo(() => {
     return categories.reduce(
       (acc, category) => {
-        acc[category] = tasks.filter((task) => task.category === category);
+        acc[category] = tasks.filter((task) => task.category === category && task.status !== 'done');
         return acc;
       },
       {} as Record<TaskCategory, Task[]>
     );
   }, [tasks]);
+  
+  const groupedArchivedTasks = useMemo(() => {
+    return archivedTasks.reduce((acc, task) => {
+      const date = format(new Date(task.completedAt!), 'PPP');
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push(task);
+      return acc;
+    }, {} as Record<string, Task[]>);
+  }, [archivedTasks]);
   
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -105,7 +130,6 @@ export default function DashboardPage() {
     const overCategory = categories.find(c => c === over.id || categorizedTasks[c].some(t => t.id === overId));
     
     if (overCategory && activeTask.category !== overCategory) {
-      // Task moved to a new column
       const newTasks = tasks.map(t => {
         if (t.id === activeId) {
           return { ...t, category: overCategory };
@@ -123,7 +147,6 @@ export default function DashboardPage() {
       setTasks(newTasks);
 
     } else {
-        // Task reordered within the same column
         const activeCategory = activeTask.category;
         const activeIndex = categorizedTasks[activeCategory].findIndex(t => t.id === activeId);
         const overTask = tasks.find(t => t.id === overId);
@@ -155,69 +178,95 @@ export default function DashboardPage() {
   }
 
   return (
-    <DndContext onDragEnd={handleDragEnd}>
-        <div className="flex h-full flex-col gap-6">
-        <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Task
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                <DialogTitle>Add a new task</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                    <Label htmlFor="titles">Titles (one per line)</Label>
-                    <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
-                </div>
-                <div>
-                    <Label htmlFor="category">Category</Label>
-                    <Controller
-                    name="category"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {categories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                                {cat}
-                            </SelectItem>
-                            ))}
-                        </SelectContent>
-                        </Select>
-                    )}
-                    />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                    <Button type="button" variant="ghost">Cancel</Button>
-                    </DialogClose>
-                    <Button type="submit">Add Tasks</Button>
-                </DialogFooter>
-                </form>
-            </DialogContent>
-            </Dialog>
-        </div>
+    <div className="flex flex-col gap-6">
+        <DndContext onDragEnd={handleDragEnd}>
+            <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold">Dashboard</h1>
+                <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add Task
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                    <DialogTitle>Add a new task</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <div>
+                        <Label htmlFor="titles">Titles (one per line)</Label>
+                        <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
+                    </div>
+                    <div>
+                        <Label htmlFor="category">Category</Label>
+                        <Controller
+                        name="category"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {categories.map((cat) => (
+                                <SelectItem key={cat} value={cat}>
+                                    {cat}
+                                </SelectItem>
+                                ))}
+                            </SelectContent>
+                            </Select>
+                        )}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                        <Button type="button" variant="ghost">Cancel</Button>
+                        </DialogClose>
+                        <Button type="submit">Add Tasks</Button>
+                    </DialogFooter>
+                    </form>
+                </DialogContent>
+                </Dialog>
+            </div>
 
-        <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {categories.map((category) => (
-                <TaskColumn 
-                    key={category} 
-                    category={category} 
-                    tasks={categorizedTasks[category]}
-                    onDeleteTask={handleDeleteTask}
-                    />
-            ))}
-        </div>
-        </div>
-    </DndContext>
+            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {categories.map((category) => (
+                    <TaskColumn 
+                        key={category} 
+                        category={category} 
+                        tasks={categorizedTasks[category]}
+                        onDeleteTask={handleDeleteTask}
+                        onDoneTask={handleMarkAsDone}
+                        />
+                ))}
+            </div>
+            </div>
+        </DndContext>
+        
+        {archivedTasks.length > 0 && (
+            <div className="mt-8">
+                <div className="flex items-center gap-2 mb-4">
+                    <Archive className="h-6 w-6" />
+                    <h2 className="text-2xl font-bold">Archive</h2>
+                </div>
+                <div className="space-y-4">
+                    {Object.entries(groupedArchivedTasks).map(([date, tasks]) => (
+                        <div key={date}>
+                            <h3 className="text-lg font-semibold mb-2">{date}</h3>
+                            <Card>
+                                <CardContent className="p-4 space-y-2">
+                                    {tasks.map(task => (
+                                         <p key={task.id} className="text-sm text-muted-foreground line-through">{task.title}</p>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+    </div>
   );
 }

@@ -5,7 +5,7 @@ import { TaskColumn } from '@/components/dashboard/task-column';
 import { TaskColumnSkeleton } from '@/components/dashboard/task-column-skeleton';
 import type { Task, TaskCategory } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Archive } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,9 @@ import { useIsClient } from '@/hooks/use-is-client';
 import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction, deleteDoc, updateDoc } from 'firebase/firestore';
+import { Card, CardContent } from '@/components/ui/card';
+import { format } from 'date-fns';
 
 
 const taskSchema = z.object({
@@ -80,7 +82,7 @@ export default function CollabPage() {
         const collabTasksRef = collection(db, 'collab-tasks');
         const q = query(collabTasksRef);
         const snapshot = await getDocs(q);
-        const currentTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        const currentTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)).filter(t => t.status !== 'done');
         
         let maxOrder = -1;
         if (currentTasks.length > 0) {
@@ -98,6 +100,7 @@ export default function CollabPage() {
                 category: data.category,
                 tag: newTag,
                 order: newOrder,
+                status: 'active'
             });
         });
     });
@@ -105,13 +108,24 @@ export default function CollabPage() {
     reset();
     setDialogOpen(false);
   };
+  
+  const handleMarkAsDone = async (taskId: string) => {
+    const taskRef = doc(db, 'collab-tasks', taskId);
+    await updateDoc(taskRef, {
+        status: 'done',
+        completedAt: new Date().toISOString()
+    });
+  };
 
   const handleDeleteTask = async (taskId: string) => {
     await deleteDoc(doc(db, 'collab-tasks', taskId));
   };
   
+  const activeTasks = useMemo(() => tasks.filter(task => task.status !== 'done'), [tasks]);
+  const archivedTasks = useMemo(() => tasks.filter(task => task.status === 'done'), [tasks]);
+
   const categorizedTasks = useMemo(() => {
-    const sortedTasks = [...tasks].sort((a, b) => a.order - b.order);
+    const sortedTasks = [...activeTasks].sort((a, b) => a.order - b.order);
     return categories.reduce(
       (acc, category) => {
         acc[category] = sortedTasks.filter((task) => task.category === category);
@@ -119,7 +133,21 @@ export default function CollabPage() {
       },
       {} as Record<TaskCategory, Task[]>
     );
-  }, [tasks]);
+  }, [activeTasks]);
+  
+  const groupedArchivedTasks = useMemo(() => {
+    const sortedArchived = [...archivedTasks].sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
+    return sortedArchived.reduce((acc, task) => {
+        if (task.completedAt) {
+            const date = format(new Date(task.completedAt), 'PPP');
+            if (!acc[date]) {
+                acc[date] = [];
+            }
+            acc[date].push(task);
+        }
+      return acc;
+    }, {} as Record<string, Task[]>);
+  }, [archivedTasks]);
   
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -129,62 +157,63 @@ export default function CollabPage() {
 
     const activeId = active.id as string;
     const overId = over.id as string;
+    
+    let tempTasks = [...activeTasks];
 
-    setTasks((prevTasks) => {
-        const oldIndex = prevTasks.findIndex((t) => t.id === activeId);
-        const overTask = prevTasks.find((t) => t.id === overId);
-        const activeTask = prevTasks[oldIndex];
+    const oldIndex = tempTasks.findIndex((t) => t.id === activeId);
+    const overTask = tempTasks.find((t) => t.id === overId);
+    const activeTask = tempTasks[oldIndex];
+    
+    if (!activeTask) return;
+
+    const overContainer = over.data.current?.sortable?.containerId;
+    const newCategory = (overContainer || overTask?.category) as TaskCategory | undefined;
+
+    if (newCategory && activeTask.category !== newCategory) {
+        // Move to a different column
+        tempTasks[oldIndex] = { ...activeTask, category: newCategory };
         
-        if (!activeTask) return prevTasks;
-
-        const overContainer = over.data.current?.sortable?.containerId;
-        const newCategory = (overContainer || overTask?.category) as TaskCategory | undefined;
-
-        if (newCategory && activeTask.category !== newCategory) {
-            // Move to a different column
-            const newTasks = [...prevTasks];
-            newTasks[oldIndex] = { ...activeTask, category: newCategory };
-            
-            const categoryTasks = newTasks.filter(t => t.category === newCategory);
-            const overInNewCategoryIndex = categoryTasks.findIndex(t => t.id === overId);
-            const targetIndexInAll = newTasks.findIndex(t => t.id === (overInNewCategoryIndex !== -1 ? overId : categoryTasks[categoryTasks.length-1]?.id)) + 1;
-           
-            const movedTask = newTasks.splice(oldIndex, 1)[0];
-            newTasks.splice(targetIndexInAll, 0, movedTask);
-
-            return newTasks;
+        const categoryTasks = tempTasks.filter(t => t.category === newCategory);
+        const overInNewCategoryIndex = categoryTasks.findIndex(t => t.id === overId);
+        
+        let targetIndexInAll;
+        if (overId === newCategory) { // Dropped on column header
+            const lastTaskOfCategory = categoryTasks.filter(t => t.id !== activeId).pop();
+            targetIndexInAll = lastTaskOfCategory ? tempTasks.findIndex(t => t.id === lastTaskOfCategory.id) + 1 : tempTasks.map(t => t.category).lastIndexOf(newCategory);
         } else {
-             // Move within the same column
-            const overIndex = prevTasks.findIndex((t) => t.id === overId);
-            if (oldIndex !== overIndex) {
-                return arrayMove(prevTasks, oldIndex, overIndex);
-            }
+            targetIndexInAll = tempTasks.findIndex(t => t.id === (overInNewCategoryIndex !== -1 ? overId : categoryTasks[categoryTasks.length-1]?.id)) + (overId === overTask?.id ? 0 : 1);
         }
-        return prevTasks;
-    });
 
-    // After optimistic update, persist changes to Firestore
-    await runTransaction(db, async (transaction) => {
-        const finalTasks = await new Promise<Task[]>((resolve) => {
-            setTasks(currentTasks => {
-                resolve(currentTasks);
-                return currentTasks;
-            });
-        });
+        const movedTask = tempTasks.splice(oldIndex, 1)[0];
+        tempTasks.splice(targetIndexInAll, 0, movedTask);
 
-        finalTasks.forEach((task, index) => {
-            const docRef = doc(db, 'collab-tasks', task.id);
-            const categoryTasks = finalTasks.filter(t => t.category === task.category);
-            const taskIndexInCategory = categoryTasks.findIndex(t => t.id === task.id);
-            const newTag = `${task.category.charAt(0)}${taskIndexInCategory + 1}`;
-            
-            transaction.update(docRef, { order: index, category: task.category, tag: newTag });
-        });
+    } else {
+          // Move within the same column
+        const overIndex = tempTasks.findIndex((t) => t.id === overId);
+        if (oldIndex !== overIndex) {
+            tempTasks = arrayMove(tempTasks, oldIndex, overIndex);
+        }
+    }
+    
+    // Update local state for immediate feedback
+    setTasks(current => [...tempTasks, ...archivedTasks]);
+
+
+    // Persist changes to Firestore
+    const batch = writeBatch(db);
+    tempTasks.forEach((task, index) => {
+        const docRef = doc(db, 'collab-tasks', task.id);
+        const categoryTasks = tempTasks.filter(t => t.category === task.category);
+        const taskIndexInCategory = categoryTasks.findIndex(t => t.id === task.id);
+        const newTag = `${task.category.charAt(0)}${taskIndexInCategory + 1}`;
+        
+        batch.update(docRef, { order: index, category: task.category, tag: newTag });
     });
+    await batch.commit();
 };
 
 
-  if (!isClient) {
+  if (!isClient || isLoading) {
     return (
         <div className="flex h-full flex-col gap-6">
             <div className="flex items-center justify-between">
@@ -201,65 +230,59 @@ export default function CollabPage() {
   }
 
   return (
-    <DndContext onDragEnd={handleDragEnd}>
-        <div className="flex h-full flex-col gap-6">
-        <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Collab</h1>
-            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Task
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                <DialogTitle>Add a new task</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                    <Label htmlFor="titles">Titles (one per line)</Label>
-                    <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
-                </div>
-                <div>
-                    <Label htmlFor="category">Category</Label>
-                    <Controller
-                    name="category"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {categories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                                {cat}
-                            </SelectItem>
-                            ))}
-                        </SelectContent>
-                        </Select>
-                    )}
-                    />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                    <Button type="button" variant="ghost">Cancel</Button>
-                    </DialogClose>
-                    <Button type="submit">Add Tasks</Button>
-                </DialogFooter>
-                </form>
-            </DialogContent>
-            </Dialog>
-        </div>
-
-        {isLoading ? (
-            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                {categories.map((category) => (
-                    <TaskColumnSkeleton key={category} category={category} />
-                ))}
+    <div className="flex flex-col gap-6">
+        <DndContext onDragEnd={handleDragEnd}>
+            <div className="flex h-full flex-col gap-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold">Collab</h1>
+                <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add Task
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                    <DialogTitle>Add a new task</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <div>
+                        <Label htmlFor="titles">Titles (one per line)</Label>
+                        <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
+                    </div>
+                    <div>
+                        <Label htmlFor="category">Category</Label>
+                        <Controller
+                        name="category"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {categories.map((cat) => (
+                                <SelectItem key={cat} value={cat}>
+                                    {cat}
+                                </SelectItem>
+                                ))}
+                            </SelectContent>
+                            </Select>
+                        )}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                        <Button type="button" variant="ghost">Cancel</Button>
+                        </DialogClose>
+                        <Button type="submit">Add Tasks</Button>
+                    </DialogFooter>
+                    </form>
+                </DialogContent>
+                </Dialog>
             </div>
-        ) : (
+            
             <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {categories.map((category) => (
                     <TaskColumn 
@@ -267,11 +290,35 @@ export default function CollabPage() {
                         category={category} 
                         tasks={categorizedTasks[category] ?? []}
                         onDeleteTask={handleDeleteTask}
+                        onDoneTask={handleMarkAsDone}
                         />
                 ))}
             </div>
+            </div>
+        </DndContext>
+         {archivedTasks.length > 0 && (
+            <div className="mt-8">
+                <div className="flex items-center gap-2 mb-4">
+                    <Archive className="h-6 w-6" />
+                    <h2 className="text-2xl font-bold">Archive</h2>
+                </div>
+                <div className="space-y-4">
+                    {Object.entries(groupedArchivedTasks).map(([date, tasks]) => (
+                        <div key={date}>
+                            <h3 className="text-lg font-semibold mb-2">{date}</h3>
+                            <Card>
+                                <CardContent className="p-4 space-y-2">
+                                    {tasks.map(task => (
+                                         <p key={task.id} className="text-sm text-muted-foreground line-through">{task.title}</p>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    ))}
+                </div>
+            </div>
         )}
-        </div>
-    </DndContext>
+    </div>
   );
 }
+

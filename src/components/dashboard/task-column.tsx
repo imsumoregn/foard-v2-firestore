@@ -12,9 +12,10 @@ interface TaskColumnProps {
   category: TaskCategory;
   tasks: Task[];
   onDeleteTask?: (id: string) => void;
+  onDoneTask?: (id: string) => void;
 }
 
-export function TaskColumn({ category, tasks, onDeleteTask }: TaskColumnProps) {
+export function TaskColumn({ category, tasks, onDeleteTask, onDoneTask }: TaskColumnProps) {
     const { setNodeRef } = useDroppable({
         id: category,
     });
@@ -33,6 +34,7 @@ export function TaskColumn({ category, tasks, onDeleteTask }: TaskColumnProps) {
                       key={task.id} 
                       task={task} 
                       onDelete={(id) => onDeleteTask && onDeleteTask(id)}
+                      onDone={(id) => onDoneTask && onDoneTask(id)}
                     />
                 ))}
                 {tasks.length === 0 && (

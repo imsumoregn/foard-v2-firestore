@@ -11,9 +11,10 @@ import { TaskContextMenu } from './task-context-menu';
 interface DraggableTaskCardProps {
   task: Task;
   onDelete: (id: string) => void;
+  onDone?: (id: string) => void;
 }
 
-export function DraggableTaskCard({ task, onDelete }: DraggableTaskCardProps) {
+export function DraggableTaskCard({ task, onDelete, onDone }: DraggableTaskCardProps) {
   const {
     attributes,
     listeners,
@@ -31,7 +32,7 @@ export function DraggableTaskCard({ task, onDelete }: DraggableTaskCardProps) {
   };
 
   return (
-    <TaskContextMenu task={task} onDelete={onDelete}>
+    <TaskContextMenu task={task} onDelete={onDelete} onDone={onDone}>
       <Card ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-muted/50 cursor-grab touch-none">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-4">
