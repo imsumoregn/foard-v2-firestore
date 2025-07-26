@@ -32,7 +32,7 @@ import { useIsClient } from '@/hooks/use-is-client';
 import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction } from 'firebase/firestore';
 
 
 const taskSchema = z.object({
@@ -74,33 +74,41 @@ export default function CollabPage() {
     const titles = data.titles.split('\n').filter(title => title.trim() !== '');
     if (titles.length === 0) return;
 
-    const categoryTasks = tasks.filter(task => task.category === data.category);
-    const startingOrder = categoryTasks.length;
+    await runTransaction(db, async (transaction) => {
+        const collabTasksRef = collection(db, 'collab-tasks');
+        const q = query(collabTasksRef);
+        const snapshot = await getDocs(q);
+        const currentTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        
+        let maxOrder = -1;
+        if (currentTasks.length > 0) {
+            maxOrder = Math.max(...currentTasks.map(t => t.order));
+        }
 
-    const batch = writeBatch(db);
-    titles.forEach((title, index) => {
-      const newTaskRef = doc(collection(db, 'collab-tasks'));
-      const newTag = `${data.category.charAt(0)}${startingOrder + index + 1}`;
-      batch.set(newTaskRef, { 
-        title: title.trim(),
-        category: data.category,
-        tag: newTag,
-        order: tasks.length + index,
-      });
+        const categoryTasks = currentTasks.filter(task => task.category === data.category);
+        
+        titles.forEach((title, index) => {
+            const newTaskRef = doc(collabTasksRef);
+            const newOrder = maxOrder + 1 + index;
+            const newTag = `${data.category.charAt(0)}${categoryTasks.length + index + 1}`;
+            transaction.set(newTaskRef, { 
+                title: title.trim(),
+                category: data.category,
+                tag: newTag,
+                order: newOrder,
+            });
+        });
     });
-
-    await batch.commit();
 
     reset();
     setDialogOpen(false);
   };
   
   const categorizedTasks = useMemo(() => {
+    const sortedTasks = [...tasks].sort((a, b) => a.order - b.order);
     return categories.reduce(
       (acc, category) => {
-        acc[category] = tasks
-          .filter((task) => task.category === category)
-          .sort((a,b) => a.order - b.order);
+        acc[category] = sortedTasks.filter((task) => task.category === category);
         return acc;
       },
       {} as Record<TaskCategory, Task[]>
@@ -109,70 +117,65 @@ export default function CollabPage() {
   
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (!over || active.id === over.id) {
-      return;
+        return;
     }
 
     const activeId = active.id as string;
     const overId = over.id as string;
-    
-    const activeTask = tasks.find(t => t.id === activeId);
-    if (!activeTask) return;
 
-    const overCategory = categories.find(c => c === over.id || categorizedTasks[c].some(t => t.id === overId));
-    
-    const newTasks = [...tasks];
-    const activeIndex = newTasks.findIndex(t => t.id === activeId);
-
-    if (overCategory && activeTask.category !== overCategory) {
-      // Task moved to a new column
-      const targetCategoryTasks = categorizedTasks[overCategory];
-      
-      // Remove from old position
-      newTasks.splice(activeIndex, 1);
-      
-      // Find new position
-      const overTaskIndex = newTasks.findIndex(t => t.id === overId);
-      const newIndex = overTaskIndex >= 0 ? 
-        (newTasks[overTaskIndex].category === overCategory ? overTaskIndex : targetCategoryTasks.length) 
-        : targetCategoryTasks.length;
-
-      // Insert into new position with updated category
-      const updatedTask = { ...activeTask, category: overCategory };
-      newTasks.splice(newIndex, 0, updatedTask);
-      
-      setTasks(newTasks); // Optimistic update
-      
-      const batch = writeBatch(db);
-      newTasks.forEach((t, index) => {
-          const newTag = `${t.category.charAt(0)}${categorizedTasks[t.category].findIndex(task => task.id === t.id) + 1}`;
-          batch.update(doc(db, 'collab-tasks', t.id), { order: index, category: t.category, tag: newTag });
-      });
-      await batch.commit();
-
-    } else {
-        // Task reordered within the same column
-        const overTask = tasks.find(t => t.id === overId);
-        if(!overTask || overTask.category !== activeTask.category) return;
+    setTasks((prevTasks) => {
+        const oldIndex = prevTasks.findIndex((t) => t.id === activeId);
+        const overTask = prevTasks.find((t) => t.id === overId);
+        const activeTask = prevTasks[oldIndex];
         
-        const overIndex = newTasks.findIndex(t => t.id === overId);
+        if (!activeTask) return prevTasks;
 
-        if (activeIndex !== overIndex) {
-            const reorderedTasks = arrayMove(newTasks, activeIndex, overIndex);
-            setTasks(reorderedTasks); // Optimistic update
+        const overContainer = over.data.current?.sortable?.containerId;
+        const newCategory = (overContainer || overTask?.category) as TaskCategory | undefined;
 
-            const batch = writeBatch(db);
-            reorderedTasks.forEach((t, index) => {
-                 const categoryTasks = reorderedTasks.filter(task => task.category === t.category);
-                 const taskIndex = categoryTasks.findIndex(task => task.id === t.id);
-                 const newTag = `${t.category.charAt(0)}${taskIndex + 1}`;
-                 batch.update(doc(db, 'collab-tasks', t.id), { order: index, tag: newTag });
-            });
-            await batch.commit();
+        if (newCategory && activeTask.category !== newCategory) {
+            // Move to a different column
+            const newTasks = [...prevTasks];
+            newTasks[oldIndex] = { ...activeTask, category: newCategory };
+            
+            const categoryTasks = newTasks.filter(t => t.category === newCategory);
+            const overInNewCategoryIndex = categoryTasks.findIndex(t => t.id === overId);
+            const targetIndexInAll = newTasks.findIndex(t => t.id === (overInNewCategoryIndex !== -1 ? overId : categoryTasks[categoryTasks.length-1]?.id)) + 1;
+           
+            const movedTask = newTasks.splice(oldIndex, 1)[0];
+            newTasks.splice(targetIndexInAll, 0, movedTask);
+
+            return newTasks;
+        } else {
+             // Move within the same column
+            const overIndex = prevTasks.findIndex((t) => t.id === overId);
+            if (oldIndex !== overIndex) {
+                return arrayMove(prevTasks, oldIndex, overIndex);
+            }
         }
-    }
-  };
+        return prevTasks;
+    });
+
+    // After optimistic update, persist changes to Firestore
+    await runTransaction(db, async (transaction) => {
+        const finalTasks = await new Promise<Task[]>((resolve) => {
+            setTasks(currentTasks => {
+                resolve(currentTasks);
+                return currentTasks;
+            });
+        });
+
+        finalTasks.forEach((task, index) => {
+            const docRef = doc(db, 'collab-tasks', task.id);
+            const categoryTasks = finalTasks.filter(t => t.category === task.category);
+            const taskIndexInCategory = categoryTasks.findIndex(t => t.id === task.id);
+            const newTag = `${task.category.charAt(0)}${taskIndexInCategory + 1}`;
+            
+            transaction.update(docRef, { order: index, category: task.category, tag: newTag });
+        });
+    });
+};
 
 
   if (!isClient) {
@@ -237,7 +240,7 @@ export default function CollabPage() {
                 <TaskColumn 
                     key={category} 
                     category={category} 
-                    tasks={categorizedTasks[category]} />
+                    tasks={categorizedTasks[category] ?? []} />
             ))}
         </div>
         <div className="xl:col-span-4">
@@ -247,4 +250,3 @@ export default function CollabPage() {
     </DndContext>
   );
 }
-
