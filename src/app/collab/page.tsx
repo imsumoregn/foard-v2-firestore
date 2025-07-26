@@ -50,7 +50,7 @@ export default function CollabPage() {
   const [isLoading, setLoading] = useState(true);
   const isClient = useIsClient();
 
-  const { control, handleSubmit, register, reset } = useForm({
+  const { control, handleSubmit, register, reset, trigger } = useForm({
     resolver: zodResolver(taskSchema),
     defaultValues: {
       titles: '',
@@ -212,6 +212,15 @@ export default function CollabPage() {
     await batch.commit();
 };
 
+ const handleKeyDown = async (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      const isValid = await trigger();
+      if (isValid) {
+        handleSubmit(onSubmit)();
+      }
+    }
+  };
 
   if (!isClient || isLoading) {
     return (
@@ -246,7 +255,7 @@ export default function CollabPage() {
                     <DialogHeader>
                     <DialogTitle>Add a new task</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <form onSubmit={handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
                     <div>
                         <Label htmlFor="titles">Titles (one per line)</Label>
                         <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
