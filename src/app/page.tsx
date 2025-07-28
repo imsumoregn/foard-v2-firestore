@@ -1,4 +1,3 @@
-
 'use client';
 
 import { TaskColumn } from '@/components/dashboard/task-column';
@@ -30,10 +29,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useState, useMemo } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
-import { DndContext, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { arrayMove } from '@dnd-kit/sortable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
+import { DragOverlayTaskCard } from '@/components/dashboard/drag-overlay-task-card';
 
 
 const taskSchema = z.object({
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useLocalStorage<Task[]>('tasks', mockTasks.filter(t => t.status !== 'done'));
   const [archivedTasks, setArchivedTasks] = useLocalStorage<Task[]>('archived-tasks', mockTasks.filter(t => t.status === 'done'));
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const isClient = useIsClient();
 
   const { control, handleSubmit, register, reset, trigger } = useForm({
@@ -114,7 +116,12 @@ export default function DashboardPage() {
     }, {} as Record<string, Task[]>);
   }, [archivedTasks]);
   
+  const handleDragStart = (event: any) => {
+    setActiveId(event.active.id as string);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
 
     if (!over) {
@@ -188,94 +195,108 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-        <DndContext onDragEnd={handleDragEnd}>
-            <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Dashboard</h1>
-                <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
-                <DialogTrigger asChild>
-                    <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Add Task
-                    </Button>
-                </DialogTrigger>
-                <DialogContent>
-                    <DialogHeader>
-                    <DialogTitle>Add a new task</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
-                    <div>
-                        <Label htmlFor="titles">Titles (one per line)</Label>
-                        <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
-                    </div>
-                    <div>
-                        <Label htmlFor="category">Category</Label>
-                        <Controller
-                        name="category"
-                        control={control}
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {categories.map((cat) => (
-                                <SelectItem key={cat} value={cat}>
-                                    {cat}
-                                </SelectItem>
-                                ))}
-                            </SelectContent>
-                            </Select>
-                        )}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                        <Button type="button" variant="ghost">Cancel</Button>
-                        </DialogClose>
-                        <Button type="submit">Add Tasks</Button>
-                    </DialogFooter>
-                    </form>
-                </DialogContent>
-                </Dialog>
-            </div>
+      <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add a new task</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
+                  <div>
+                    <Label htmlFor="titles">Titles (one per line)</Label>
+                    <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
+                  </div>
+                  <div>
+                    <Label htmlFor="category">Category</Label>
+                    <Controller
+                      name="category"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button type="button" variant="ghost">Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit">Add Tasks</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
 
+          {/* Multi-container SortableContext for cross-column drag-and-drop */}
+          <SortableContext
+            items={categories}
+            strategy={verticalListSortingStrategy}
+          >
             <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                {categories.map((category) => (
-                    <TaskColumn 
-                        key={category} 
-                        category={category} 
-                        tasks={categorizedTasks[category]}
-                        onDeleteTask={handleDeleteTask}
-                        onDoneTask={handleMarkAsDone}
-                        />
-                ))}
+              {categories.map((category) => (
+                <TaskColumn
+                  key={category}
+                  category={category}
+                  tasks={categorizedTasks[category]}
+                  onDeleteTask={handleDeleteTask}
+                  onDoneTask={handleMarkAsDone}
+                />
+              ))}
             </div>
-            </div>
-        </DndContext>
-        
-        {archivedTasks.length > 0 && (
-            <div className="mt-8">
-                <div className="flex items-center gap-2 mb-4">
-                    <Archive className="h-6 w-6" />
-                    <h2 className="text-2xl font-bold">Archive</h2>
-                </div>
-                <div className="space-y-4">
-                    {Object.entries(groupedArchivedTasks).map(([date, tasks]) => (
-                        <div key={date}>
-                            <h3 className="text-lg font-semibold mb-2">{date}</h3>
-                            <Card>
-                                <CardContent className="p-4 space-y-2">
-                                    {tasks.map(task => (
-                                         <p key={task.id} className="text-sm text-muted-foreground line-through">{task.title}</p>
-                                    ))}
-                                </CardContent>
-                            </Card>
-                        </div>
+          </SortableContext>
+        </div>
+        <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+          {activeId ? (
+            (() => {
+              const task = tasks.find(t => t.id === activeId);
+              return task ? <DragOverlayTaskCard task={task} /> : null;
+            })()
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {archivedTasks.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Archive className="h-6 w-6" />
+            <h2 className="text-2xl font-bold">Archive</h2>
+          </div>
+          <div className="space-y-4">
+            {Object.entries(groupedArchivedTasks).map(([date, tasks]) => (
+              <div key={date}>
+                <h3 className="text-lg font-semibold mb-2">{date}</h3>
+                <Card>
+                  <CardContent className="p-4 space-y-2">
+                    {tasks.map(task => (
+                       <p key={task.id} className="text-sm text-muted-foreground line-through">{task.title}</p>
                     ))}
-                </div>
-            </div>
-        )}
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

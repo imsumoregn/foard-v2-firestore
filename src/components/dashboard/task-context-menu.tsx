@@ -1,11 +1,10 @@
-
 'use client';
 
+import React, { useImperativeHandle, forwardRef, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Copy, Trash2, CheckCircle } from 'lucide-react';
@@ -18,25 +17,57 @@ interface TaskContextMenuProps {
   children: React.ReactNode;
 }
 
-export function TaskContextMenu({ task, onDelete, onDone, children }: TaskContextMenuProps) {
+// Add imperative handle to control menu open state
+export const TaskContextMenu = forwardRef(function TaskContextMenu(
+  { task, onDelete, onDone, children }: TaskContextMenuProps,
+  ref: React.Ref<{ openMenu: (event?: { x: number; y: number }) => void }>
+) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    openMenu: (event) => {
+      if (event) setMenuPosition(event);
+      setOpen(true);
+    },
+  }));
+
   const handleCopy = () => {
     navigator.clipboard.writeText(task.title);
   };
 
   const handleDelete = () => {
     onDelete(task.id);
+    setOpen(false);
+    setMenuPosition(null);
   };
 
   const handleDone = () => {
     if (onDone) {
       onDone(task.id);
     }
+    setOpen(false);
+    setMenuPosition(null);
   };
 
+  // When menu closes, reset position
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setMenuPosition(null);
+  };
+
+  // Positioning for context menu (Radix doesn't support absolute positioning out of the box, but we can use sideOffset as a workaround)
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      {/* No DropdownMenuTrigger, children are just rendered */}
+      {children}
+      <DropdownMenuContent
+        side={undefined}
+        align={undefined}
+        sideOffset={4}
+        style={menuPosition ? { position: 'fixed', left: menuPosition.x, top: menuPosition.y, minWidth: 180 } : {}}
+        onPointerDownOutside={() => setMenuPosition(null)}
+      >
         {onDone && (
           <DropdownMenuItem onClick={handleDone}>
             <CheckCircle className="mr-2 h-4 w-4" />
@@ -55,4 +86,4 @@ export function TaskContextMenu({ task, onDelete, onDone, children }: TaskContex
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});
