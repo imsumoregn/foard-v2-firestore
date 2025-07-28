@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 function UserProfile() {
   const { state } = useSidebar();
   return (
-    <div className={`flex items-center gap-3 ${state === 'collapsed' ? 'justify-center' : ''}`}>
+    <div className={`flex items-center ${state === 'collapsed' ? 'justify-center' : 'gap-3 '}`}>
         <Avatar className="h-10 w-10">
             <AvatarImage src="https://placehold.co/100x100.png" alt="@Ry" data-ai-hint="avatar" />
             <AvatarFallback>RY</AvatarFallback>
