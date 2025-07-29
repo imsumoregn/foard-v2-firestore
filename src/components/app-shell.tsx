@@ -1,10 +1,9 @@
-
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Book, LayoutDashboard, Lightbulb, PenSquare, Target, Users } from 'lucide-react';
+import { Book, LayoutDashboard, Lightbulb, PenSquare, Target, Users, Sparkles } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -20,10 +19,17 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useIsClient } from '@/hooks/use-is-client';
 
 
 function UserProfile() {
   const { state } = useSidebar();
+  const isClient = useIsClient();
+
+  if (!isClient) {
+    return <div className="h-10 w-10" />
+  }
+
   return (
     <div className={`flex items-center ${state === 'collapsed' ? 'justify-center' : 'gap-3 '}`}>
         <Avatar className="h-10 w-10">
@@ -38,7 +44,7 @@ function UserProfile() {
   )
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const menuItems = [
@@ -47,10 +53,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: '/notes', label: 'Notes', icon: PenSquare },
     { href: '/reading-list', label: 'Reading List', icon: Book },
     { href: '/goals', label: 'Goals', icon: Target },
+    { href: '/tree', label: 'Tree天命', icon: Sparkles },
   ];
 
   return (
-    <SidebarProvider>
+    <>
       <Sidebar>
         <SidebarHeader>
           <UserProfile />
@@ -86,6 +93,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </SidebarInset>
+    </>
+  );
+}
+
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+
+  return (
+    <SidebarProvider>
+      <AppShellLayout>
+        {children}
+      </AppShellLayout>
     </SidebarProvider>
   );
 }
