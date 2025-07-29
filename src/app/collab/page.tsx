@@ -182,54 +182,60 @@ export default function CollabPage() {
     const activeTask = tasks.find(t => t.id === activeId);
     if (!activeTask) return;
 
+    // Find the category the task is being dropped into
     const overCategory = categories.find(c => c === over.id || categorizedTasks[c].some(t => t.id === overId));
+    const fromCategory = activeTask.category;
 
-    if (overCategory && activeTask.category !== overCategory) {
+    // Helper to update order for all tasks in a category
+    const updateCategoryOrder = (category: TaskCategory, allTasks: Task[]) => {
+      const categoryTasks = allTasks.filter(t => t.category === category);
+      return categoryTasks
+        .sort((a, b) => a.order - b.order)
+        .map((t, idx) => ({ ...t, order: idx }));
+    };
+
+    if (overCategory && fromCategory !== overCategory) {
       // Move to different category
-      const newTasks = tasks.map(t => {
-        if (t.id === activeId) {
-          return { ...t, category: overCategory };
-        }
-        return t;
-      }).map((t, index, array) => {
-        const categoryTasks = array.filter(task => task.category === t.category);
-        const taskIndex = categoryTasks.findIndex(task => task.id === t.id);
-        const newTag = `${t.category.charAt(0)}${taskIndex + 1}`;
-        if (t.tag !== newTag) {
-          return { ...t, tag: newTag };
-        }
-        return t;
-      });
-
+      // Remove from old category, insert into new category at the correct position
+      const fromTasks = categorizedTasks[fromCategory].filter(t => t.id !== activeId);
+      let toTasks = [...categorizedTasks[overCategory]];
+      // Find the index to insert into destination category
+      let overIndex = toTasks.findIndex(t => t.id === overId);
+      if (overIndex === -1) overIndex = toTasks.length;
+      // Insert the moved task into the new category at the right position
+      const movedTask = { ...activeTask, category: overCategory };
+      toTasks.splice(overIndex, 0, movedTask);
+      // Update order for both categories
+      const updatedFromTasks = fromTasks.map((t, idx) => ({ ...t, order: idx }));
+      const updatedToTasks = toTasks.map((t, idx) => ({ ...t, order: idx }));
+      // Merge all tasks
+      const unaffectedTasks = tasks.filter(t => t.category !== fromCategory && t.category !== overCategory);
+      const newTasks = [
+        ...unaffectedTasks,
+        ...updatedFromTasks,
+        ...updatedToTasks
+      ];
       setTasks(newTasks);
       await persistTaskChanges(newTasks);
-
-    } else {
+    } else if (overCategory && fromCategory === overCategory) {
       // Move within same category
-      const activeCategory = activeTask.category;
-      const activeIndex = categorizedTasks[activeCategory].findIndex(t => t.id === activeId);
-      const overTask = tasks.find(t => t.id === overId);
-      if (!overTask || overTask.category !== activeCategory) return;
-      const overIndex = categorizedTasks[activeCategory].findIndex(t => t.id === overId);
-
-      if (activeIndex !== overIndex) {
-        const newCategoryTasks = arrayMove(categorizedTasks[activeCategory], activeIndex, overIndex);
-        const otherTasks = tasks.filter(t => t.category !== activeCategory);
-        const reorderedTasks = [...otherTasks, ...newCategoryTasks].map((t, index, array) => {
-          if (t.category === activeCategory) {
-            const categoryTasks = newCategoryTasks;
-            const taskIndex = categoryTasks.findIndex(task => task.id === t.id);
-            const newTag = `${t.category.charAt(0)}${taskIndex + 1}`;
-            if (t.tag !== newTag) {
-              return { ...t, tag: newTag };
-            }
-          }
-          return t;
-        });
-
-        setTasks(reorderedTasks);
-        await persistTaskChanges(reorderedTasks);
-      }
+      const category = fromCategory;
+      const categoryTasks = [...categorizedTasks[category]];
+      const activeIndex = categoryTasks.findIndex(t => t.id === activeId);
+      const overIndex = categoryTasks.findIndex(t => t.id === overId);
+      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) return;
+      // Move the task in the array
+      const newCategoryTasks = arrayMove(categoryTasks, activeIndex, overIndex);
+      // Update order for the category
+      const updatedCategoryTasks = newCategoryTasks.map((t, idx) => ({ ...t, order: idx }));
+      // Merge with other tasks
+      const otherTasks = tasks.filter(t => t.category !== category);
+      const newTasks = [
+        ...otherTasks,
+        ...updatedCategoryTasks
+      ];
+      setTasks(newTasks);
+      await persistTaskChanges(newTasks);
     }
   };
 
