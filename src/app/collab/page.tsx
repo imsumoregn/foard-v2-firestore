@@ -274,7 +274,7 @@ export default function CollabPage() {
           <h1 className="text-3xl font-bold">Collab</h1>
           <Button disabled><PlusCircle className="mr-2 h-4 w-4" /> Add Task</Button>
         </div>
-        <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2">
           {categories.map((category) => (
             <TaskColumnSkeleton key={category} category={category} />
           ))}
