@@ -157,14 +157,24 @@ export default function CollabPage() {
   // Helper function to persist task changes to Firestore
   const persistTaskChanges = async (updatedTasks: Task[]) => {
     const batch = writeBatch(db);
-    updatedTasks.forEach((task, index) => {
-      const docRef = doc(db, 'collab-tasks', task.id);
-      const categoryTasks = updatedTasks.filter(t => t.category === task.category);
-      const taskIndexInCategory = categoryTasks.findIndex(t => t.id === task.id);
-      const newTag = `${task.category.charAt(0)}${taskIndexInCategory + 1}`;
-
-      batch.update(docRef, { order: index, category: task.category, tag: newTag });
+    
+    // Group tasks by category and update their order and tags
+    categories.forEach(category => {
+      const categoryTasks = updatedTasks
+        .filter(t => t.category === category)
+        .sort((a, b) => a.order - b.order);
+      
+      categoryTasks.forEach((task, index) => {
+        const docRef = doc(db, 'collab-tasks', task.id);
+        const newTag = `${category.charAt(0)}${index + 1}`;
+        batch.update(docRef, { 
+          order: index, 
+          category: task.category, 
+          tag: newTag 
+        });
+      });
     });
+    
     await batch.commit();
   };
 
@@ -222,8 +232,16 @@ export default function CollabPage() {
       const category = fromCategory;
       const categoryTasks = [...categorizedTasks[category]];
       const activeIndex = categoryTasks.findIndex(t => t.id === activeId);
-      const overIndex = categoryTasks.findIndex(t => t.id === overId);
-      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) return;
+      
+      // Handle case where overId is the category itself (dropping on empty area)
+      let overIndex = categoryTasks.findIndex(t => t.id === overId);
+      if (overIndex === -1) {
+        // Dropping on the category itself, move to the end
+        overIndex = categoryTasks.length;
+      }
+      
+      if (activeIndex === -1 || activeIndex === overIndex) return;
+      
       // Move the task in the array
       const newCategoryTasks = arrayMove(categoryTasks, activeIndex, overIndex);
       // Update order for the category
