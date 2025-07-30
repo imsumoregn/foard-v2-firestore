@@ -341,7 +341,7 @@ export default function CollabPage() {
             items={categories}
             strategy={verticalListSortingStrategy}
           >
-            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2">
               {categories.map((category) => (
                 <TaskColumn
                   key={category}
