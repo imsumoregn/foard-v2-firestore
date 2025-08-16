@@ -20,12 +20,24 @@ export type Note = {
 
 export type ReadingStatus = 'To Read' | 'Reading' | 'Completed';
 
+export type ReadingSession = {
+  id: string;
+  bookId: string;
+  startTime: string;
+  endTime: string;
+  duration: number; // in minutes
+  chaptersRead: string;
+  thoughts?: string;
+  createdAt: string;
+};
+
 export type ReadingListItem = {
   id: string;
   title:string;
   author: string;
   status: ReadingStatus;
   summary?: string;
+  sessions?: ReadingSession[];
 };
 
 export type Goal = {
