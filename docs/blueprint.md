@@ -9,6 +9,20 @@
 - Goal Tracking: Allow users to set goals and track progress towards their goals, with visual representations of their progress.
 - Daily Inspiration: Display a daily quote or motivational message to inspire users.
 
+## Auth and Collaboration Additions
+
+- Users authenticate with name + lucky number (1–9999). `userId = sha256(lowercase(name)+":"+lucky)`. Stored locally and in Firestore `users/{userId}`.
+- Data model:
+  - `users/{userId}`: { name, luckyNumber, createdAt }
+  - `dashboards/{dashboardId}`: { name, ownerId, createdAt }
+  - `dashboardMembers/{dashboardId}_{userId}`: { dashboardId, userId, role, joinedAt }
+  - `dashboards/{dashboardId}/tasks/{taskId}`: task documents
+  - `dashboardInvites/{inviteId}`: { dashboardId, createdBy, token, expiresAt }
+- Invites: create tokened link `/collab/{dashboardId}?invite=TOKEN`; recipient is prompted to accept and becomes a member.
+- Suggested Firestore rules (outline):
+  - Allow read/write on `dashboards/{id}/tasks` if membership document exists for `request.auth.uid`.
+  - Allow creating `dashboardMembers` with valid invite context (future: move to server function).
+
 ## Style Guidelines:
 
 - Primary color: Muted teal (#73A79D) to create a calm and focused environment.
