@@ -20,6 +20,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useIsClient } from '@/hooks/use-is-client';
+import { AuthProvider } from '@/hooks/use-auth';
+import { LoginModal } from '@/components/login-modal';
 
 
 function UserProfile() {
@@ -101,10 +103,13 @@ function AppShellLayout({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
-    <SidebarProvider>
-      <AppShellLayout>
-        {children}
-      </AppShellLayout>
-    </SidebarProvider>
+    <AuthProvider>
+      <SidebarProvider>
+        <AppShellLayout>
+          {children}
+        </AppShellLayout>
+        <LoginModal />
+      </SidebarProvider>
+    </AuthProvider>
   );
 }
