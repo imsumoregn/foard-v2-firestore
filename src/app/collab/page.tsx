@@ -1,389 +1,199 @@
-'use client';
+"use client";
 
-import { TaskColumn } from '@/components/dashboard/task-column';
-import { TaskColumnSkeleton } from '@/components/dashboard/task-column-skeleton';
-import type { Task, TaskCategory } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { PlusCircle, Archive } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { getUserDashboards, type UserDashboard } from "@/lib/dashboard-service";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { useState, useMemo, useEffect } from 'react';
-import { useIsClient } from '@/hooks/use-is-client';
-import { DndContext, DragEndEvent, DragOverlay } from '@dnd-kit/core';
-import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, query, onSnapshot, doc, writeBatch, where, getDocs, orderBy, runTransaction, deleteDoc, updateDoc } from 'firebase/firestore';
-import { Card, CardContent } from '@/components/ui/card';
-import { format } from 'date-fns';
-import { DragOverlayTaskCard } from '@/components/dashboard/drag-overlay-task-card';
-
-
-const taskSchema = z.object({
-  titles: z.string().min(1, 'At least one title is required'),
-  category: z.enum(['Now', 'Day', 'Week', 'Month']),
-});
-
-const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Users, Calendar, ExternalLink, Loader2 } from "lucide-react";
+import { format } from "date-fns";
+import Link from "next/link";
 
 export default function CollabPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isDialogOpen, setDialogOpen] = useState(false);
-  const [isLoading, setLoading] = useState(true);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const isClient = useIsClient();
+    const { user } = useAuth();
+    const [userDashboards, setUserDashboards] = useState<UserDashboard[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-  const { control, handleSubmit, register, reset, trigger } = useForm({
-    resolver: zodResolver(taskSchema),
-    defaultValues: {
-      titles: '',
-      category: 'Now' as TaskCategory,
-    },
-  });
+    useEffect(() => {
+        async function fetchDashboards() {
+            if (!user) return;
 
-  useEffect(() => {
-    if (!isClient) return;
-
-    const q = query(collection(db, 'collab-tasks'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const tasksData: Task[] = [];
-      querySnapshot.forEach((doc) => {
-        tasksData.push({ id: doc.id, ...doc.data() } as Task);
-      });
-      setTasks(tasksData);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [isClient]);
-
-  const onSubmit = async (data: z.infer<typeof taskSchema>) => {
-    const titles = data.titles.split('\n').filter(title => title.trim() !== '');
-    if (titles.length === 0) return;
-
-    await runTransaction(db, async (transaction) => {
-      const collabTasksRef = collection(db, 'collab-tasks');
-      const q = query(collabTasksRef);
-      const snapshot = await getDocs(q);
-      const currentTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)).filter(t => t.status !== 'done');
-
-      let maxOrder = -1;
-      if (currentTasks.length > 0) {
-        maxOrder = Math.max(...currentTasks.map(t => t.order));
-      }
-
-      const categoryTasks = currentTasks.filter(task => task.category === data.category);
-
-      titles.forEach((title, index) => {
-        const newTaskRef = doc(collabTasksRef);
-        const newOrder = maxOrder + 1 + index;
-        const newTag = `${data.category.charAt(0)}${categoryTasks.length + index + 1}`;
-        transaction.set(newTaskRef, {
-          title: title.trim(),
-          category: data.category,
-          tag: newTag,
-          order: newOrder,
-          status: 'active'
-        });
-      });
-    });
-
-    reset();
-    setDialogOpen(false);
-  };
-
-  const handleMarkAsDone = async (taskId: string) => {
-    const taskRef = doc(db, 'collab-tasks', taskId);
-    await updateDoc(taskRef, {
-      status: 'done',
-      completedAt: new Date().toISOString()
-    });
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    await deleteDoc(doc(db, 'collab-tasks', taskId));
-  };
-
-  const activeTasks = useMemo(() => tasks.filter(task => task.status !== 'done'), [tasks]);
-  const archivedTasks = useMemo(() => tasks.filter(task => task.status === 'done'), [tasks]);
-
-  const categorizedTasks = useMemo(() => {
-    const sortedTasks = [...activeTasks].sort((a, b) => a.order - b.order);
-    return categories.reduce(
-      (acc, category) => {
-        acc[category] = sortedTasks.filter((task) => task.category === category);
-        return acc;
-      },
-      {} as Record<TaskCategory, Task[]>
-    );
-  }, [activeTasks]);
-
-  const groupedArchivedTasks = useMemo(() => {
-    const sortedArchived = [...archivedTasks].sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
-    return sortedArchived.reduce((acc, task) => {
-      if (task.completedAt) {
-        const date = format(new Date(task.completedAt), 'PPP');
-        if (!acc[date]) {
-          acc[date] = [];
+            try {
+                setLoading(true);
+                setError(null);
+                const dashboards = await getUserDashboards(user.userId);
+                setUserDashboards(dashboards);
+            } catch (err) {
+                console.error("Failed to fetch dashboards:", err);
+                setError("Failed to load dashboards. Please try again.");
+            } finally {
+                setLoading(false);
+            }
         }
-        acc[date].push(task);
-      }
-      return acc;
-    }, {} as Record<string, Task[]>);
-  }, [archivedTasks]);
 
-  const handleDragStart = (event: any) => {
-    setActiveId(event.active.id as string);
-  };
+        fetchDashboards();
+    }, [user]);
 
-  // Helper function to persist task changes to Firestore
-  const persistTaskChanges = async (updatedTasks: Task[]) => {
-    const batch = writeBatch(db);
-    
-    // Group tasks by category and update their order and tags
-    categories.forEach(category => {
-      const categoryTasks = updatedTasks
-        .filter(t => t.category === category)
-        .sort((a, b) => a.order - b.order);
-      
-      categoryTasks.forEach((task, index) => {
-        const docRef = doc(db, 'collab-tasks', task.id);
-        const newTag = `${category.charAt(0)}${index + 1}`;
-        batch.update(docRef, { 
-          order: index, 
-          category: task.category, 
-          tag: newTag 
-        });
-      });
-    });
-    
-    await batch.commit();
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveId(null);
-    const { active, over } = event;
-
-    if (!over) {
-      return;
-    }
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    const activeTask = tasks.find(t => t.id === activeId);
-    if (!activeTask) return;
-
-    // Find the category the task is being dropped into
-    const overCategory = categories.find(c => c === over.id || categorizedTasks[c].some(t => t.id === overId));
-    const fromCategory = activeTask.category;
-
-    // Helper to update order for all tasks in a category
-    const updateCategoryOrder = (category: TaskCategory, allTasks: Task[]) => {
-      const categoryTasks = allTasks.filter(t => t.category === category);
-      return categoryTasks
-        .sort((a, b) => a.order - b.order)
-        .map((t, idx) => ({ ...t, order: idx }));
+    const getRoleBadgeVariant = (role: string) => {
+        return role === "owner" ? "default" : "secondary";
     };
 
-    if (overCategory && fromCategory !== overCategory) {
-      // Move to different category
-      // Remove from old category, insert into new category at the correct position
-      const fromTasks = categorizedTasks[fromCategory].filter(t => t.id !== activeId);
-      let toTasks = [...categorizedTasks[overCategory]];
-      // Find the index to insert into destination category
-      let overIndex = toTasks.findIndex(t => t.id === overId);
-      if (overIndex === -1) overIndex = toTasks.length;
-      // Insert the moved task into the new category at the right position
-      const movedTask = { ...activeTask, category: overCategory };
-      toTasks.splice(overIndex, 0, movedTask);
-      // Update order for both categories
-      const updatedFromTasks = fromTasks.map((t, idx) => ({ ...t, order: idx }));
-      const updatedToTasks = toTasks.map((t, idx) => ({ ...t, order: idx }));
-      // Merge all tasks
-      const unaffectedTasks = tasks.filter(t => t.category !== fromCategory && t.category !== overCategory);
-      const newTasks = [
-        ...unaffectedTasks,
-        ...updatedFromTasks,
-        ...updatedToTasks
-      ];
-      setTasks(newTasks);
-      await persistTaskChanges(newTasks);
-    } else if (overCategory && fromCategory === overCategory) {
-      // Move within same category
-      const category = fromCategory;
-      const categoryTasks = [...categorizedTasks[category]];
-      const activeIndex = categoryTasks.findIndex(t => t.id === activeId);
-      
-      // Handle case where overId is the category itself (dropping on empty area)
-      let overIndex = categoryTasks.findIndex(t => t.id === overId);
-      if (overIndex === -1) {
-        // Dropping on the category itself, move to the end
-        overIndex = categoryTasks.length;
-      }
-      
-      if (activeIndex === -1 || activeIndex === overIndex) return;
-      
-      // Move the task in the array
-      const newCategoryTasks = arrayMove(categoryTasks, activeIndex, overIndex);
-      // Update order for the category
-      const updatedCategoryTasks = newCategoryTasks.map((t, idx) => ({ ...t, order: idx }));
-      // Merge with other tasks
-      const otherTasks = tasks.filter(t => t.category !== category);
-      const newTasks = [
-        ...otherTasks,
-        ...updatedCategoryTasks
-      ];
-      setTasks(newTasks);
-      await persistTaskChanges(newTasks);
-    }
-  };
+    const formatDate = (timestamp: any) => {
+        if (!timestamp) return "Never";
+        return format(timestamp.toDate(), "MMM dd, yyyy HH:mm");
+    };
 
-  const handleKeyDown = async (event: React.KeyboardEvent<HTMLFormElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      const isValid = await trigger();
-      if (isValid) {
-        handleSubmit(onSubmit)();
-      }
-    }
-  };
-
-  if (!isClient || isLoading) {
-    return (
-      <div className="flex h-full flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Collab</h1>
-          <Button disabled><PlusCircle className="mr-2 h-4 w-4" /> Add Task</Button>
-        </div>
-        <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2">
-          {categories.map((category) => (
-            <TaskColumnSkeleton key={category} category={category} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex h-full flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Collab</h1>
-            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Task
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add a new task</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
-                  <div>
-                    <Label htmlFor="titles">Titles (one per line)</Label>
-                    <Textarea id="titles" {...register('titles')} rows={5} placeholder="Task 1&#10;Task 2&#10;Task 3" />
-                  </div>
-                  <div>
-                    <Label htmlFor="category">Category</Label>
-                    <Controller
-                      name="category"
-                      control={control}
-                      render={({ field }) => (
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat} value={cat}>
-                                {cat}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button type="button" variant="ghost">Cancel</Button>
-                    </DialogClose>
-                    <Button type="submit">Add Tasks</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <SortableContext
-            items={categories}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2">
-              {categories.map((category) => (
-                <TaskColumn
-                  key={category}
-                  category={category}
-                  tasks={categorizedTasks[category]}
-                  onDeleteTask={handleDeleteTask}
-                  onDoneTask={handleMarkAsDone}
-                />
-              ))}
+    if (!user) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h2 className="text-xl font-semibold mb-2">
+                        Please log in
+                    </h2>
+                    <p className="text-muted-foreground">
+                        You need to be logged in to view your dashboards.
+                    </p>
+                </div>
             </div>
-          </SortableContext>
-        </div>
-        <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
-          {activeId ? (() => {
-            const task = tasks.find(t => t.id === activeId);
-            return task ? <DragOverlayTaskCard task={task} /> : null;
-          })() : null}
-        </DragOverlay>
-      </DndContext>
-      {archivedTasks.length > 0 && (
-        <div className="mt-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Archive className="h-6 w-6" />
-            <h2 className="text-2xl font-bold">Archive</h2>
-          </div>
-          <div className="space-y-4">
-            {Object.entries(groupedArchivedTasks).map(([date, tasks]) => (
-              <div key={date}>
-                <h3 className="text-lg font-semibold mb-2">{date}</h3>
-                <Card>
-                  <CardContent className="p-4 space-y-2">
-                    {tasks.map(task => (
-                      <p key={task.id} className="text-sm text-muted-foreground line-through">{task.title}</p>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        );
+    }
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">
+                        Loading your dashboards...
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <div className="text-destructive mb-4">
+                        <Users className="h-12 w-12 mx-auto mb-2" />
+                        <p className="text-lg font-semibold">Error</p>
+                    </div>
+                    <p className="text-muted-foreground mb-4">{error}</p>
+                    <Button onClick={() => window.location.reload()}>
+                        Try Again
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="container mx-auto p-6 space-y-6">
+            <div className="flex items-center gap-3">
+                <Users className="h-8 w-8" />
+                <h1 className="text-3xl font-bold">My Dashboards</h1>
+            </div>
+
+            {userDashboards.length === 0 ? (
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                        <Users className="h-16 w-16 text-muted-foreground mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">
+                            No Dashboards Yet
+                        </h3>
+                        <p className="text-muted-foreground text-center mb-6 max-w-md">
+                            You're not a member of any dashboards yet. Create
+                            your own dashboard or ask someone to invite you to
+                            theirs.
+                        </p>
+                        <Button asChild>
+                            <Link href="/">Create Dashboard</Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            ) : (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Calendar className="h-5 w-5" />
+                            Dashboard List ({userDashboards.length})
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Dashboard Name</TableHead>
+                                    <TableHead>Your Role</TableHead>
+                                    <TableHead>Owner</TableHead>
+                                    <TableHead>Last Updated</TableHead>
+                                    <TableHead>Joined</TableHead>
+                                    <TableHead className="text-right">
+                                        Actions
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {userDashboards.map(({ dashboard, member }) => (
+                                    <TableRow key={dashboard.id}>
+                                        <TableCell className="font-medium">
+                                            {dashboard.name}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant={getRoleBadgeVariant(
+                                                    member.role,
+                                                )}
+                                            >
+                                                {member.role === "owner"
+                                                    ? "Owner"
+                                                    : "Member"}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {dashboard.ownerId === user.userId
+                                                ? "You"
+                                                : "Other User"}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {formatDate(dashboard.lastUpdated)}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {formatDate(member.joinedAt)}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                asChild
+                                            >
+                                                <Link
+                                                    href={`/collab/${dashboard.id}`}
+                                                >
+                                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                                    Open
+                                                </Link>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
+    );
+}
