@@ -42,48 +42,39 @@ export async function getUserDashboards(userId: string): Promise<UserDashboard[]
       });
     });
 
-    // Get dashboard details for each membership
-    const userDashboards: UserDashboard[] = [];
-    
-    for (const member of members) {
+    if (members.length === 0) {
+      return [];
+    }
+
+    // Fetch all dashboard documents in parallel instead of sequentially.
+    const dashboardPromises = members.map(async (member) => {
       const dashboardDoc = await getDoc(doc(db, 'dashboards', member.dashboardId));
       
       if (dashboardDoc.exists()) {
         const dashboardData = dashboardDoc.data();
         
-        // Get the latest task update to determine lastUpdated
-        const tasksQuery = query(
-          collection(db, 'dashboards', member.dashboardId, 'tasks'),
-          orderBy('updatedAt', 'desc'),
-          // Limit to 1 to get the most recent task
-          // Note: Firestore doesn't support limit with orderBy on subcollections in all cases
-          // We'll fetch all and sort in memory for now
-        );
-        
-        const tasksSnapshot = await getDocs(tasksQuery);
-        let lastUpdated: Timestamp | undefined;
-        
-        if (!tasksSnapshot.empty) {
-          // Get the most recent task's updatedAt
-          const mostRecentTask = tasksSnapshot.docs[0];
-          const taskData = mostRecentTask.data();
-          lastUpdated = taskData.updatedAt || taskData.createdAt;
-        }
-        
+        // Use lastUpdated from dashboard document instead of querying tasks.
         const dashboard: Dashboard = {
           id: member.dashboardId,
           name: dashboardData.name,
           ownerId: dashboardData.ownerId,
           createdAt: dashboardData.createdAt,
-          lastUpdated: lastUpdated,
+          // `lastUpdated` is directly from dashboard doc (maintained by task mutations).
+          lastUpdated: dashboardData.lastUpdated || dashboardData.createdAt,
         };
         
-        userDashboards.push({
+        return {
           dashboard,
           member,
-        });
+        } as UserDashboard;
       }
-    }
+      return null;
+    });
+
+    // Wait for all dashboard fetches to complete in parallel.
+    const userDashboards = (await Promise.all(dashboardPromises)).filter(
+      (item): item is UserDashboard => item !== null
+    );
 
     // Sort by lastUpdated (most recent first), then by createdAt if no updates
     userDashboards.sort((a, b) => {
