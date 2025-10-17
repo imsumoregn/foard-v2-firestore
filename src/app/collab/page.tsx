@@ -183,6 +183,8 @@ export default function CollabPage() {
                                             >
                                                 <Link
                                                     href={`/collab/${dashboard.id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
                                                 >
                                                     <ExternalLink className="h-4 w-4 mr-2" />
                                                     Open
