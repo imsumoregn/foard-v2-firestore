@@ -18,12 +18,22 @@ import { Users, Calendar, ExternalLink, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 
+const getRoleBadgeVariant = (role: string) => {
+    return role === "owner" ? "default" : "secondary";
+};
+
+const formatDate = (timestamp: any) => {
+    if (!timestamp) return "Never";
+    return format(timestamp.toDate(), "MMM dd, yyyy HH:mm");
+};
+
 export default function CollabPage() {
     const { user } = useAuth();
     const [userDashboards, setUserDashboards] = useState<UserDashboard[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // FIX: Update with better fetching.
     useEffect(() => {
         async function fetchDashboards() {
             if (!user) return;
@@ -43,15 +53,6 @@ export default function CollabPage() {
 
         fetchDashboards();
     }, [user]);
-
-    const getRoleBadgeVariant = (role: string) => {
-        return role === "owner" ? "default" : "secondary";
-    };
-
-    const formatDate = (timestamp: any) => {
-        if (!timestamp) return "Never";
-        return format(timestamp.toDate(), "MMM dd, yyyy HH:mm");
-    };
 
     if (!user) {
         return (
@@ -107,6 +108,7 @@ export default function CollabPage() {
             </div>
 
             {userDashboards.length === 0 ? (
+                // Empty state.
                 <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                         <Users className="h-16 w-16 text-muted-foreground mb-4" />
