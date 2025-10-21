@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { DndContext, DragEndEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { arrayMove } from '@dnd-kit/sortable';
-import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, setDoc, updateDoc, writeBatch, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, runTransaction, writeBatch, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Task, TaskCategory } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,9 @@ import { ShareButton } from '@/components/share-button';
 import { Archive } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useFirestoreDoc } from '@/hooks/use-firestore-doc';
+import { useDashboardTasks } from '@/hooks/use-dashboard-tasks';
+import { useDashboardMembers } from '@/hooks/use-dashboard-members';
 
 const taskSchema = z.object({
   titles: z.string().min(1, 'At least one title is required'),
@@ -39,81 +42,63 @@ const categories: TaskCategory[] = ['Now', 'Day', 'Week', 'Month'];
 export default function DashboardCollabPage() {
   const params = useParams<{ dashboardId: string }>();
   const search = useSearchParams();
-  const router = useRouter();
   const dashboardId = params.dashboardId;
   const inviteToken = search.get('invite');
 
   const { user, ensureAuth } = useAuth();
   const isClient = useIsClient();
 
-  const [dashboardName, setDashboardName] = useState<string>('');
-  const [members, setMembers] = useState<Array<{ userId: string; name?: string }>>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [isDialogOpen, setDialogOpen] = useState(false);
-  const [isLoading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showInvitePrompt, setShowInvitePrompt] = useState(false);
   const [isMember, setIsMember] = useState<boolean>(false);
-  const unsubscribeRef = useRef<null | (() => void)>(null);
   const { toast } = useToast();
+
+  const { data: dashboardData, loading: dashboardLoading } = useFirestoreDoc<{
+    name: string;
+    ownerId: string;
+    createdAt: any;
+    lastUpdated?: any;
+  }>('dashboards', dashboardId);
+
+  const { tasks, loading: tasksLoading } = useDashboardTasks(dashboardId);
+  const { members, loading: membersLoading, refetch: refetchMembers } = useDashboardMembers(dashboardId);
 
   const { control, handleSubmit, register, reset, trigger } = useForm({
     resolver: zodResolver(taskSchema),
     defaultValues: { titles: '', category: 'Now' as TaskCategory },
   });
 
+  // Handles membership checking.
   useEffect(() => {
-    if (!isClient) return;
-    (async () => {
+    if (!isClient || !user || !dashboardId) return;
+
+    const checkMembership = async () => {
       try {
-        const u = await ensureAuth().catch(() => null);
-        if (!u) return;
-
-        // load dashboard name
-        const dRef = doc(db, 'dashboards', dashboardId);
-        const dSnap = await getDoc(dRef);
-        setDashboardName(dSnap.exists() ? ((dSnap.data() as any).name || 'Untitled') : 'Unknown');
-
-        // membership
-        const memberId = `${dashboardId}_${u.userId}`;
-        const mSnap = await getDoc(doc(db, 'dashboardMembers', memberId));
-        const isMem = mSnap.exists();
+        const memberId = `${dashboardId}_${user.userId}`;
+        const memberDoc = await getDoc(doc(db, 'dashboardMembers', memberId));
+        const isMem = memberDoc.exists();
         setIsMember(isMem);
-        if (!isMem) {
-          setLoading(false);
-          if (inviteToken) setShowInvitePrompt(true);
-          return;
+        
+        if (!isMem && inviteToken) {
+          setShowInvitePrompt(true);
         }
-
-        // subscribe tasks only for members
-        const qy = query(collection(db, 'dashboards', dashboardId, 'tasks'), orderBy('order', 'asc'));
-        const unsub = onSnapshot(qy, (qs) => {
-          const list: Task[] = [];
-          qs.forEach((docx) => list.push({ id: docx.id, ...(docx.data() as any) }));
-          setTasks(list);
-          setLoading(false);
-        });
-        unsubscribeRef.current = unsub;
-
-        // members details
-        const mq = query(collection(db, 'dashboardMembers'), where('dashboardId', '==', dashboardId));
-        const mqs = await getDocs(mq);
-        const basic = mqs.docs.map(d => ({ userId: (d.data() as any).userId as string }));
-        // resolve names
-        const withNames = await Promise.all(basic.map(async m => {
-          try { const us = await getDoc(doc(db, 'users', m.userId)); return { userId: m.userId, name: us.exists() ? (us.data() as any).name : undefined }; } catch { return m; }
-        }));
-        setMembers(withNames);
-      } catch {
-        setLoading(false);
+      } catch (error) {
+        console.error('Failed to check membership:', error);
       }
-    })();
-    return () => { if (unsubscribeRef.current) unsubscribeRef.current(); };
-  }, [dashboardId, isClient, ensureAuth, inviteToken]);
+    };
+
+    checkMembership();
+  }, [dashboardId, isClient, user, inviteToken]);
 
   const onSubmit = async (data: z.infer<typeof taskSchema>) => {
     const titles = data.titles.split('\n').filter(t => t.trim() !== '');
     if (titles.length === 0) return;
+
+    // Use writeBatch to atomically update tasks and dashboard.lastUpdated.
+    // This maintains the lastUpdated field for efficient dashboard listing.
+    const batch = writeBatch(db);
+    const now = serverTimestamp();
 
     await runTransaction(db, async (transaction) => {
       const coll = collection(db, 'dashboards', dashboardId, 'tasks');
@@ -121,12 +106,26 @@ export default function DashboardCollabPage() {
       const current = qs.docs.map(d => ({ id: d.id, ...(d.data() as any) }) as Task).filter(t => t.status !== 'done');
       let maxOrder = current.length ? Math.max(...current.map(t => t.order)) : -1;
       const categoryTasks = current.filter(t => t.category === data.category);
+      
       titles.forEach((title, index) => {
         const ref = doc(coll);
         const newOrder = maxOrder + 1 + index;
         const newTag = `${data.category.charAt(0)}${categoryTasks.length + index + 1}`;
-        transaction.set(ref, { title: title.trim(), category: data.category, tag: newTag, order: newOrder, status: 'active', createdBy: user?.userId });
+        transaction.set(ref, { 
+          title: title.trim(), 
+          category: data.category, 
+          tag: newTag, 
+          order: newOrder, 
+          status: 'active', 
+          createdBy: user?.userId,
+          createdAt: now,
+          updatedAt: now
+        });
       });
+
+      // Update dashboard.lastUpdated to reflect recent activity
+      const dashboardRef = doc(db, 'dashboards', dashboardId);
+      transaction.update(dashboardRef, { lastUpdated: now });
     });
 
     reset();
@@ -134,12 +133,31 @@ export default function DashboardCollabPage() {
   };
 
   const handleMarkAsDone = async (taskId: string) => {
+    // Update both task and dashboard.lastUpdated atomically.
+    const batch = writeBatch(db);
     const taskRef = doc(db, 'dashboards', dashboardId, 'tasks', taskId);
-    await updateDoc(taskRef, { status: 'done', completedAt: new Date().toISOString() });
+    const dashboardRef = doc(db, 'dashboards', dashboardId);
+    
+    batch.update(taskRef, { 
+      status: 'done', 
+      completedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    });
+    batch.update(dashboardRef, { lastUpdated: serverTimestamp() });
+    
+    await batch.commit();
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    await deleteDoc(doc(db, 'dashboards', dashboardId, 'tasks', taskId));
+    // Update both task deletion and dashboard.lastUpdated atomically.
+    const batch = writeBatch(db);
+    const taskRef = doc(db, 'dashboards', dashboardId, 'tasks', taskId);
+    const dashboardRef = doc(db, 'dashboards', dashboardId);
+    
+    batch.delete(taskRef);
+    batch.update(dashboardRef, { lastUpdated: serverTimestamp() });
+    
+    await batch.commit();
   };
 
   const activeTasks = useMemo(() => tasks.filter(t => t.status !== 'done'), [tasks]);
@@ -168,15 +186,27 @@ export default function DashboardCollabPage() {
   const handleDragStart = (event: any) => setActiveId(event.active.id as string);
 
   const persistTaskChanges = async (updated: Task[]) => {
+    // Update task changes and dashboard.lastUpdated atomically.
     const batch = writeBatch(db);
+    const dashboardRef = doc(db, 'dashboards', dashboardId);
+    
     categories.forEach(category => {
       const categoryTasks = updated.filter(t => t.category === category).sort((a, b) => a.order - b.order);
       categoryTasks.forEach((task, index) => {
         const docRef = doc(db, 'dashboards', dashboardId, 'tasks', task.id);
         const newTag = `${category.charAt(0)}${index + 1}`;
-        batch.update(docRef, { order: index, category: task.category, tag: newTag });
+        batch.update(docRef, { 
+          order: index, 
+          category: task.category, 
+          tag: newTag,
+          updatedAt: serverTimestamp()
+        });
       });
     });
+    
+    // Update dashboard.lastUpdated to reflect recent activity
+    batch.update(dashboardRef, { lastUpdated: serverTimestamp() });
+    
     await batch.commit();
   };
 
@@ -201,7 +231,6 @@ export default function DashboardCollabPage() {
       const updatedTo = toTasks.map((t, idx) => ({ ...t, order: idx }));
       const unaffected = tasks.filter(t => t.category !== fromCategory && t.category !== overCategory);
       const newTasks = [...unaffected, ...updatedFrom, ...updatedTo];
-      setTasks(newTasks);
       await persistTaskChanges(newTasks);
     } else if (overCategory && fromCategory === overCategory) {
       const category = fromCategory;
@@ -214,7 +243,6 @@ export default function DashboardCollabPage() {
       const otherTasks = tasks.filter(t => t.category !== category);
       const updatedCategoryTasks = newCategoryTasks.map((t, idx) => ({ ...t, order: idx }));
       const newTasks = [...otherTasks, ...updatedCategoryTasks];
-      setTasks(newTasks);
       await persistTaskChanges(newTasks);
     }
   };
@@ -236,29 +264,15 @@ export default function DashboardCollabPage() {
       setShowInvitePrompt(false);
       setIsMember(true);
       toast({ title: 'Invitation accepted', description: 'You can now collaborate on this dashboard.' });
-      // re-trigger subscription by reloading effect dependencies
-      setLoading(true);
-      // force refresh members
-      const mq = query(collection(db, 'dashboardMembers'), where('dashboardId', '==', dashboardId));
-      const mqs = await getDocs(mq);
-      const basic = mqs.docs.map(d => ({ userId: (d.data() as any).userId as string }));
-      const withNames = await Promise.all(basic.map(async m => {
-        try { const us = await getDoc(doc(db, 'users', m.userId)); return { userId: m.userId, name: us.exists() ? (us.data() as any).name : undefined }; } catch { return m; }
-      }));
-      setMembers(withNames);
-      // subscribe tasks now
-      if (unsubscribeRef.current) unsubscribeRef.current();
-      const qy = query(collection(db, 'dashboards', dashboardId, 'tasks'), orderBy('order', 'asc'));
-      unsubscribeRef.current = onSnapshot(qy, (qs) => {
-        const list: Task[] = [];
-        qs.forEach((docx) => list.push({ id: docx.id, ...(docx.data() as any) }));
-        setTasks(list);
-        setLoading(false);
-      });
+      
+      await refetchMembers();
     }
   };
 
-  if (!isClient || isLoading) {
+  const isLoading = dashboardLoading || (isMember && tasksLoading);
+  const dashboardName = dashboardData?.name || 'Loading...';
+
+  if (!isClient || (dashboardLoading && !dashboardData)) {
     return (
       <div className="flex h-full flex-col gap-6">
         <div className="flex items-center justify-between">
@@ -313,7 +327,9 @@ export default function DashboardCollabPage() {
             <span>Collaborators</span>
             <div className="flex -space-x-2">
               {members.map((m) => {
-                const initials = (m.name || m.userId).split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+                // Progressive loading - show user ID initially, then name when loaded.
+                const displayName = m.user?.name || m.userId;
+                const initials = displayName.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
                 return (
                   <Avatar key={m.userId} className="h-7 w-7 ring-2 ring-background">
                     <AvatarFallback>{initials}</AvatarFallback>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { getUserDashboards, type UserDashboard } from "@/lib/dashboard-service";
+import { firestoreCache, cacheKeys } from "@/lib/firestore-cache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Table,
@@ -33,7 +34,7 @@ export default function CollabPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // FIX: Update with better fetching.
+    // Use caching for dashboard data to reduce redundant fetches.
     useEffect(() => {
         async function fetchDashboards() {
             if (!user) return;
@@ -41,8 +42,24 @@ export default function CollabPage() {
             try {
                 setLoading(true);
                 setError(null);
-                const dashboards = await getUserDashboards(user.userId);
-                setUserDashboards(dashboards);
+
+                // Check cache first for immediate display.
+                const cacheKey = cacheKeys.userDashboards(user.userId);
+                const cachedDashboards =
+                    firestoreCache.get<UserDashboard[]>(cacheKey);
+                if (cachedDashboards) {
+                    console.log("INFO: cache hit");
+                    setUserDashboards(cachedDashboards);
+                    setLoading(false);
+                } else {
+                    console.log("INFO: cache miss");
+                    // Fetch fresh data and update cache.
+                    const dashboards = await getUserDashboards(user.userId);
+                    setUserDashboards(dashboards);
+
+                    // Cache the results with 5 minute TTL.
+                    firestoreCache.set(cacheKey, dashboards, 5 * 60 * 1000);
+                }
             } catch (err) {
                 console.error("Failed to fetch dashboards:", err);
                 setError("Failed to load dashboards. Please try again.");
